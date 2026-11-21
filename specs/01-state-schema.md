@@ -13,4 +13,23 @@
 
 ## Toteutetut tietorakenteet
 
-_Ei vielä. Ensimmäiset rakenteet lisätään viipaleessa S1._
+### Viipale S1 (`01-boat-on-water`)
+
+#### 1. `BoatState` (`extends RefCounted`, `src/core/state/boat_state.gd`)
+
+| Kenttä | Tyyppi | Oletus | Kuvaus |
+| :--- | :--- | :--- | :--- |
+| `world_position` | `Vector3` | `Vector3.ZERO` | Veneen sijainti maailmankoordinaatistossa |
+| `heading` | `float` | `0.0` | Keulan suunta radiaaneina (`0` = `-Z` eteenpäin) |
+| `forward_speed` | `float` | `0.0` | Etenemisnopeus (m/s) |
+
+**Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
+
+#### 2. `PlayerInput` (`extends RefCounted`, `src/core/state/player_input.gd`)
+
+| Kenttä | Tyyppi | Oletus | Kuvaus |
+| :--- | :--- | :--- | :--- |
+| `throttle` | `float` | `0.0` | Kaasusyöte (`-1.0 .. 1.0`, erillään replikoidusta venetilasta) |
+| `steering` | `float` | `0.0` | Ohjaussyöte (`-1.0 .. 1.0`, `+1.0` vasen, `-1.0` oikea) |
+
+**Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`

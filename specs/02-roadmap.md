@@ -5,7 +5,7 @@
 | # | Viipale (tiedosto) | "Nyt voin ___" | Uusi käsite | Tila |
 | :--- | :--- | :--- | :--- | :--- |
 | S0 | Ympäristö ja perusta | ajaa headless-testiportin | Testiportti | `done` |
-| S1 | `01-boat-on-water` | ajaa venettä järvellä yhdessä ikkunassa | Core + 3D-näkymän runko | `draft` |
+| S1 | `01-boat-on-water` | ajaa venettä järvellä yhdessä ikkunassa | Core + 3D-näkymän runko | `in-progress` |
 | S2 | `02-two-windows-one-boat` | nähdä saman veneen kahdessa ikkunassa (`--host` / `--join` / `--port`) | Verkkosynkka (vain `BoatState`) | `draft` |
 | S3 | `03-crew-on-deck` | kävellä kannella, ja toinen ikkuna näkee sen | Paikallinen koordinaatisto verkon yli | `draft` |
 | S4 | `04-helm` | ottaa ruorin ja luovuttaa sen | Ohjausoikeus (`driver_peer_id`) | `draft` |
