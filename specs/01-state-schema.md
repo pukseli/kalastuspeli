@@ -13,7 +13,7 @@
 
 ## Toteutetut tietorakenteet
 
-### Viipale S1 (`01-boat-on-water`)
+### Viipale S1 (`01-boat-on-water`) & Mekaniikkapäivitys (`specs/02-mechanics/boat-physics.md`)
 
 #### 1. `BoatState` (`extends RefCounted`, `src/core/state/boat_state.gd`)
 
@@ -21,7 +21,11 @@
 | :--- | :--- | :--- | :--- |
 | `world_position` | `Vector3` | `Vector3.ZERO` | Veneen sijainti maailmankoordinaatistossa |
 | `heading` | `float` | `0.0` | Keulan suunta radiaaneina (`0` = `-Z` eteenpäin) |
-| `forward_speed` | `float` | `0.0` | Etenemisnopeus (m/s) |
+| `forward_speed` | `float` | `0.0` | Etenemisnopeus rungon suuntaan (m/s) |
+| `velocity` | `Vector2` | `Vector2.ZERO` | 2D-nopeusvektori maailman X/Z-tasossa |
+| `angular_velocity` | `float` | `0.0` | Pyörimisnopeus Y-akselin ympäri (rad/s) |
+| `throttle` | `float` | `0.0` | Nykyinen kaasun taso (`-1.0 .. 1.0`) |
+| `steering_angle` | `float` | `0.0` | Perämoottorin kääntökulma radiaaneina |
 
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 

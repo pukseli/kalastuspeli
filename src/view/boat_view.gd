@@ -3,6 +3,8 @@ extends Node3D
 
 var players_container: Node3D
 var _player_views: Dictionary = {}
+var _current_pitch: float = 0.0
+var _current_roll: float = 0.0
 
 
 func _init() -> void:
@@ -45,7 +47,11 @@ func _make_box(box_size: Vector3, pos: Vector3, mat: StandardMaterial3D) -> Mesh
 
 func apply_state(boat: BoatState) -> void:
 	position = boat.world_position
-	rotation.y = boat.heading
+	var target_pitch := clampf(boat.throttle * 0.05 + boat.forward_speed * 0.004, -0.04, 0.08)
+	var target_roll := clampf(boat.angular_velocity * boat.forward_speed * 0.02, -0.15, 0.15)
+	_current_pitch = lerpf(_current_pitch, target_pitch, 0.1)
+	_current_roll = lerpf(_current_roll, target_roll, 0.1)
+	rotation = Vector3(_current_pitch, boat.heading, _current_roll)
 
 
 func apply_players(players: Dictionary) -> void:
