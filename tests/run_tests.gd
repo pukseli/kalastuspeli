@@ -12,7 +12,12 @@ func _initialize() -> void:
 	var failed_tests := 0
 
 	for file_name in test_files:
-		var script: GDScript = load("res://tests/" + file_name)
+		var script = load("res://tests/" + file_name)
+		if script == null or not script.can_instantiate():
+			total_tests += 1
+			failed_tests += 1
+			print("[FAIL] %s: load failed" % file_name)
+			continue
 		var inst = script.new()
 		var method_names: Array[String] = []
 		for method_info in script.get_script_method_list():
