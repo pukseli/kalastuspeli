@@ -18,12 +18,13 @@
 | **Apuri** | `flash_lite`-alagentti | Mekaaniset rutiinitehtävät. |
 | **Token-Dense Specs** | Kaikki speksit | Kirjoitetaan tiiviinä taulukoina ja tyyppimäärittelyinä pitkän proosan sijaan. |
 
-### Code-First & Kielisääntö
+### Code-First, Kieli- ja Git-sääntö
 
 | Sääntö | Toteutus |
 | :--- | :--- |
 | **Yksi skenetiedosto** | Vain **yksi** `.tscn`-tiedosto (`src/main.tscn`). Kaikki 3D-primitiivit, materiaalit, valot, kamerat ja UI rakennetaan proseduraalisesti GDScriptillä. |
 | **Kieli** | Koodi, luokat, muuttujat ja kommentit **englanniksi**; speksidokumentaatio **suomeksi**. |
+| **Git Commit & Push** | **Globaali sääntö:** Jokaisen vaiheen, jokaisen AI-ajon ja jokaisen muutoksen jälkeen tehdään `git commit` ja `git push origin main`. |
 
 ## 2. Kansiorakenne ja Arkkitehtuurikerrokset
 
@@ -87,7 +88,7 @@ bash tests/run.sh
 - [ ] view-viipaleissa manuaalinen budjetti- ja demotarkistus tehty
 - [ ] käyttäjä on kokeillut `"Nyt voin ___"` -tuloksen
 - [ ] `02-roadmap.md`-tila on `done`
-- [ ] git commit `feat(slice-NN): …`
+- [ ] `git commit` (`feat(slice-NN): …`) ja `git push origin main`
 
 ## 7. Pysyvät päätökset (ADR-tiivistelmä)
 
