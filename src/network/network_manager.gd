@@ -22,6 +22,7 @@ var _client_inputs: Dictionary = {}
 var _connected_peers: Dictionary = {}
 var _disconnected_peers: Array[int] = []
 var _combined_input: PlayerInput = PlayerInput.new()
+var _net_state: String = "offline"
 
 
 static func parse_cli_args(args: PackedStringArray) -> Dictionary:
@@ -72,10 +73,12 @@ func configure_from_args(args: PackedStringArray) -> void:
 	port = int(cfg.get("port", DEFAULT_PORT))
 	set_sync_rate_hz(int(cfg.get("sync_hz", DEFAULT_SYNC_HZ)))
 	set_bot_count(int(cfg.get("bots", 0)))
+	_net_state = "offline"
 
 
 func start_session() -> Error:
 	if mode == "offline":
+		_net_state = "offline"
 		return OK
 	if not is_inside_tree() or multiplayer == null:
 		return ERR_UNCONFIGURED
@@ -83,19 +86,31 @@ func start_session() -> Error:
 	if mode == "host":
 		var host_peer := transport.create_host_peer(port)
 		if host_peer == null:
+			_net_state = "bind_failed"
 			return ERR_CANT_CREATE
 		multiplayer.multiplayer_peer = host_peer
 		if not multiplayer.peer_connected.is_connected(_on_peer_connected):
 			multiplayer.peer_connected.connect(_on_peer_connected)
 		if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
 			multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+		_net_state = "hosting"
+		print("[NET] Hosting on UDP *:%d (sync: %d Hz)" % [port, sync_rate_hz])
 		return OK
 
 	if mode == "client":
 		var client_peer := transport.create_client_peer(address, port)
 		if client_peer == null:
+			_net_state = "failed"
 			return ERR_CANT_CREATE
 		multiplayer.multiplayer_peer = client_peer
+		if not multiplayer.connected_to_server.is_connected(_on_connected_to_server):
+			multiplayer.connected_to_server.connect(_on_connected_to_server)
+		if not multiplayer.connection_failed.is_connected(_on_connection_failed):
+			multiplayer.connection_failed.connect(_on_connection_failed)
+		if not multiplayer.server_disconnected.is_connected(_on_server_disconnected):
+			multiplayer.server_disconnected.connect(_on_server_disconnected)
+		_net_state = "connecting"
+		print("[NET] Connecting to %s:%d ..." % [address, port])
 		return OK
 
 	return OK
@@ -238,11 +253,17 @@ func apply_game_snapshot(game_state: GameState, snapshot: Dictionary) -> void:
 
 
 func get_status_text() -> String:
-	var mode_label := mode.to_upper()
-	var peer_count := _connected_peers.size()
+	if mode == "host":
+		var host_label := "HOST BIND FAILED (:%d)" % port if _net_state == "bind_failed" else "HOST (:%d)" % port
+		return "Net: %s | Peers: %d | Sync: %d Hz | Bots: %d" % [host_label, _connected_peers.size(), sync_rate_hz, bot_count]
 	if mode == "client":
-		peer_count = 1 if _is_client_connected() else 0
-	return "Net: %s | Peers: %d | Sync: %d Hz | Bots: %d" % [mode_label, peer_count, sync_rate_hz, bot_count]
+		var connected := _is_client_connected()
+		var peer_count := 1 if connected else 0
+		var state_tag := "CONNECTED" if connected else _net_state.to_upper()
+		if state_tag == "OFFLINE":
+			state_tag = "CONNECTING"
+		return "Net: CLIENT (%s %s:%d) | Peers: %d | Sync: %d Hz | Bots: %d" % [state_tag, address, port, peer_count, sync_rate_hz, bot_count]
+	return "Net: OFFLINE | Peers: 0 | Sync: %d Hz | Bots: %d" % [sync_rate_hz, bot_count]
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -298,6 +319,7 @@ func _on_peer_connected(peer_id: int) -> void:
 			"move_z": 0.0,
 			"interact": false,
 		}
+	print("[NET] Peer connected: %d" % peer_id)
 
 
 func _on_peer_disconnected(peer_id: int) -> void:
@@ -305,6 +327,22 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_client_inputs.erase(peer_id)
 	if not _disconnected_peers.has(peer_id):
 		_disconnected_peers.append(peer_id)
+	print("[NET] Peer disconnected: %d" % peer_id)
+
+
+func _on_connected_to_server() -> void:
+	_net_state = "connected"
+	print("[NET] Connected to server %s:%d (local peer_id=%d)" % [address, port, get_local_peer_id()])
+
+
+func _on_connection_failed() -> void:
+	_net_state = "failed"
+	print("[NET] Connection failed to %s:%d (check Host IP, UDP port %d, and firewall)" % [address, port, port])
+
+
+func _on_server_disconnected() -> void:
+	_net_state = "disconnected"
+	print("[NET] Disconnected from server %s:%d" % [address, port])
 
 
 func _is_client_connected() -> bool:
