@@ -9,14 +9,26 @@ fi
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if ! "$GODOT" --headless --audio-driver Dummy --path "$PROJECT_DIR" --import >/dev/null 2>&1; then
+IMPORT_OUTPUT="$(timeout 120 "$GODOT" --headless --audio-driver Dummy --path "$PROJECT_DIR" --import 2>&1)"
+IMPORT_EXIT=$?
+if [[ $IMPORT_EXIT -eq 124 ]]; then
+	echo "[FAIL] Timeout"
+	exit 1
+fi
+if [[ $IMPORT_EXIT -ne 0 ]]; then
+	printf '%s\n' "$IMPORT_OUTPUT"
 	echo "[FAIL] Import failed"
 	exit 1
 fi
 
-OUTPUT="$("$GODOT" --headless --audio-driver Dummy --path "$PROJECT_DIR" --script res://tests/run_tests.gd 2>&1)"
+OUTPUT="$(timeout 120 "$GODOT" --headless --audio-driver Dummy --path "$PROJECT_DIR" --script res://tests/run_tests.gd 2>&1)"
 TEST_EXIT=$?
 printf '%s\n' "$OUTPUT"
+
+if [[ $TEST_EXIT -eq 124 ]]; then
+	echo "[FAIL] Timeout"
+	exit 1
+fi
 
 if printf '%s\n' "$OUTPUT" | grep -Eq '^(SCRIPT ERROR|ERROR):'; then
 	echo "[FAIL] Engine reported errors"
