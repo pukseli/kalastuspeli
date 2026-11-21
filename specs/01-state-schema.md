@@ -6,7 +6,7 @@
 
 | Sääntö | Perustelu | Esimerkki |
 | :--- | :--- | :--- |
-| **Yksi totuuden lähde:** ei johdettuja kenttiä kahteen paikkaan | Estää ristiriitaiset tilat | `driver_peer_id` veneessä; "ajaako pelaaja" johdetaan siitä, ei erillistä `is_driving_boat`-kenttää |
+| **Yksi totuuden lähde:** ei johdettuja kenttiä kahteen paikkaan | Estää ristiriitaiset tilat | `GameState.stations["helm"]`; "ajaako pelaaja" johdetaan siitä, ei erillistä `is_driving_boat`-kenttää |
 | **Syöte ≠ tila:** asiakkaan syötteet erillisessä `PlayerInput`-rakenteessa | Server-authoritative-malli: asiakas lähettää aikeet, palvelin päättää tuloksen | `move_input`, `throttle` ja `steering` kuuluvat `PlayerInput`-rakenteeseen, eivät replikoituun tilaan |
 | **Staattinen konfiguraatio ei kuulu replikoituun tilaan** | Ei turhaa verkkoliikennettä 20 kertaa sekunnissa | Kannen mitat `const`- tai `BoatConfig`-arvona |
 | **Serialisointi:** jokaisella tilaluokalla `to_dict()` / `from_dict()` | Verkkovalmius | — |
@@ -58,7 +58,7 @@
 
 | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- |
-| `tick` | `int` | `0` | Simulaation tick-laskuri (valmis S6-interpolointiin) |
+| `tick` | `int` | `0` | Simulaation tick-laskuri (valmis S5-interpolointiin) |
 | `boat` | `BoatState` | `BoatState.new()` | Veneen maailmatila |
 | `players` | `Dictionary` | `{}` | `peer_id: int -> PlayerState` |
 | `stations` | `Dictionary` | `{"helm": 0}` | Asemat: `station_id: String -> occupant_peer_id: int` (lisätty S4) |

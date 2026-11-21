@@ -1,5 +1,7 @@
 # Mekaniikkaspeksi: Uistelun Ydinsilmukka, 6 Vavan Pujotus ja Tiimikaaos
 
+> **Suuntaa antava pohjoistähti.** Viipalespeksi (`specs/slices/NN-*.md`) on sitova ja saa poiketa tästä. Viipalenumerot (`S6`, `S9` …) viittaavat tiedostoon `specs/02-roadmap.md`.
+
 ## 1. Yleiskuva ja tehtäväsaturaation periaate
 
 Peli suunnitellaan niin, että **6 vavan uistelussa yhtäaikaisia tehtäviä on enemmän kuin käsiä**. Yhden roolin pettäminen käynnistää ketjureaktion (esim. pysähdys tai törmäys sotkee siimat), joten tiimityö ja jatkuva kommunikointi syntyvät roolien sopimisesta lennossa.
@@ -45,11 +47,11 @@ Veneen (`BoatView`) mitat ovat `3.6 m × 7.2 m`, kävelyalue `X ∈ [-1.3, 1.3]`
 
 | Mekaniikka | Sääntö | Ketjureaktio / Seuraus virheestä |
 | :--- | :--- | :--- |
-| **Veneen jatkuva liike & uisteluikkuna** | Veneen nopeus pidetään uisteluikkunassa ja käännökset loivina (`BoatSimulator`-kaasukäyrän matala pää hienosäädetään tarkaksi `S6`:ssa; tarkat rajat kalibroidaan `S6`/`S9`:ssä) | Pysähdys / liian hidas vauhti → siimat vajoavat ja sotkeutuvat. Liian kova vauhti → viehe ei pyydä & kireys kasvaa. Jyrkkä käännös → sisäkaarteen siimat sotkuun |
+| **Veneen jatkuva liike & uisteluikkuna** | Veneen nopeus pidetään uisteluikkunassa ja käännökset loivina (`BoatSimulator`-kaasukäyrän matala pää ja uisteluikkunan rajat kalibroidaan `S11`:ssä) | Pysähdys / liian hidas vauhti → siimat vajoavat ja sotkeutuvat. Liian kova vauhti → viehe ei pyydä & kireys kasvaa. Jyrkkä käännös → sisäkaarteen siimat sotkuun |
 | **Aallokko, tuuli & karikot** | Deterministinen `WaveField` + tuuli/sivuvirta kampeavat venettä kurssilta. Maailman saaret/karikot (`WorldFeatures`) pysäyttävät/kimmottavat törmätessä | Ruorin laiminlyönti vie veneen pois kurssilta tai karikkoon. Äkkipysähdys karikolla → **kaikki vedessä olevat siimat sotkuun** |
-| **Tärppi & pujotus (`-1 → -2 → -3`)** | **Yhdistelmämalli:**<br>1. *Tiimipujotus (nopea & turvallinen):* Kaveri siirtää `-2`/`-3`-vavat sisempiin telineisiin tai nostaa/pitelee viereistä vapaa sivuun väsyttäjän kävellessä `-3`:een.<br>2. *Yksinpujotus (hitaampi & riskialttiimpi):* Väsyttäjä ohittaa telinevavan itse oikealla yli/ali-asennolla.<br>3. *Kielletty oikotie:* Suora kelaus sisäpaikalta (`-1`, `-2`, `+1`, `+2`) | Väärä yli/ali-asento, huolimaton läpijuoksu tai suora kelaus sisäpaikalta leikkaa ulompien siimojen yli → **siimasotku** |
+| **Tärppi & pujotus (`-1 → -2 → -3`)** | **Yhdistelmämalli:**<br>1. *Tiimipujotus (nopea & turvallinen):* Kaveri siirtää `-2`/`-3`-vavat sisempiin telineisiin tai nostaa/pitelee viereistä vapaa sivuun väsyttäjän kävellessä `-3`:een.<br>2. *Yksinpujotus (hitaampi & riskialttiimpi, backlog `xx-solo-pass`):* Väsyttäjä ohittaa telinevavan itse oikealla yli/ali-asennolla.<br>3. *Kielletty oikotie:* Suora kelaus sisäpaikalta (`-1`, `-2`, `+1`, `+2`) | Väärä yli/ali-asento, huolimaton läpijuoksu tai suora kelaus sisäpaikalta leikkaa ulompien siimojen yli → **siimasotku** |
 | **Väsyttäminen & kireys** | Ulommaisesta positiosta (`-3`/`+3`) kala kelataan veneen kyljelle kireyttä (`tension`) halliten | Ylikelaus kalan syöksyessä → siima poikki. Liian löysä siima → kala karkaa |
-| **Haavitus, hätälasku & sumppu** | *Tiimisuoritus:* Väsyttäjä pitelee vapaa `-3`/`+3`:ssa, haavimies kauhaisee kalan haavilla ulkolaidalta ja kippaa sumppuun.<br>*Hätälasku (1–2 pelaajaa):* Kalan vavan voi laskea hetkeksi `-3`/`+3`-telineeseen haavin hakua varten | Myöhästyminen haavituksessa tai hätälaskun lyhyen karkausajastimen umpeutuminen → kala riuhtaisee itsensä irti |
+| **Haavitus, hätälasku & sumppu** | *Tiimisuoritus:* Väsyttäjä pitelee vapaa `-3`/`+3`:ssa, haavimies kauhaisee kalan haavilla ulkolaidalta ja kippaa sumppuun.<br>*Hätälasku (1–2 pelaajaa, backlog `xx-emergency-rest`):* Kalan vavan voi laskea hetkeksi `-3`/`+3`-telineeseen haavin hakua varten | Myöhästyminen haavituksessa tai hätälaskun lyhyen karkausajastimen umpeutuminen → kala riuhtaisee itsensä irti |
 | **Siimasotkujen selvitys** | Sotkeutunut vapa lukittuu pois uistelusta, kunnes 1–2 pelaajaa selvittää solmun kannella | Kuormittaa miehistöä (yksi käsipari pois kierrosta) ja sotkuisessa vavassa oleva kala karkaa aikarajan jälkeen |
 
 ---
@@ -58,7 +60,7 @@ Veneen (`BoatView`) mitat ovat `3.6 m × 7.2 m`, kävelyalue `X ∈ [-1.3, 1.3]`
 
 Koko pelin kansitoiminta rakentuu kahden selkeän peruskäsitteen varaan:
 1. **Kiinteät asemat (`Station`, `S4`):** Ruori (`helm`), 6 kylkivapatelinettä (`-3..-1`, `+1..+3`), haaviteline ja kalasumppu (`cooler`).
-2. **Kannettavat esineet (`HeldItem` / "kädet", `S8`):** Pelaajalla on enintään **1 esine kädessä** (`none`, `rod`, `net`, `net_with_fish`), jonka kanssa voi kävellä vapaasti kannella.
+2. **Kannettavat esineet (`HeldItem` / "kädet", `S6`):** Pelaajalla on enintään **1 esine kädessä** (`none`, `rod`, `net`, `net_with_fish`), jonka kanssa voi kävellä vapaasti kannella.
 
 | Näppäin | Kannella / Esine kädessä | Ruorissa (`helm`) |
 | :--- | :--- | :--- |
@@ -73,9 +75,9 @@ Koko pelin kansitoiminta rakentuu kahden selkeän peruskäsitteen varaan:
 
 Tietoskeema (`specs/01-state-schema.md`) pidetään kevyenä YAGNI-periaatteella ja kasvatetaan vain viipale kerrallaan, mutta ydinkoodi suunnitellaan neljällä avoimella rajapinnalla:
 
-| Laajennuspiste | Demototeutus (S4–S14) | Helppo lisätä backlogista myöhemmin |
+| Laajennuspiste | Demototeutus (S4–S19) | Helppo lisätä backlogista myöhemmin |
 | :--- | :--- | :--- |
-| **`WorldFeatures`** (`S7`) | Tyypitetty maailmakohdelista: `island`, `rock` | Kalaparvet (`hotspot`), matalikot (`shallow`) |
-| **`Station` + `HeldItem`** (`S4`, `S8`) | Kiinteät asemat (ruori, telineet, haaviteline, sumppu) + kädessä kannettavat esineet (`rod`, `net`) | Kaikuluotainasema (`sonar`), pilssipumppu (`bilge`), moottorihuolto |
-| **Modulaariset `RodState`-tekijät** (`S9–S12`) | Kireys ja sotku lasketaan modulaarisista syötteistä: nopeus, käännös, törmäys, slotti, pujotusasento, kalan veto | Pohjatärpit, roskat vieheessä, vieheen syvyyskäyrä |
-| **`EventDirector`** (`S14`) | Erillinen tapahtumasyöttäjä, joka rytmittää demossa tärpit/tuplatärpit ja aallokon/tuulen | Kalaparvitapahtumat, uistelukisan tilaukset (`orders`), moottoriviat |
+| **`WorldFeatures`** (`S15`) | Tyypitetty maailmakohdelista: `island`, `rock` | Kalaparvet (`hotspot`), matalikot (`shallow`) |
+| **`Station` + `HeldItem`** (`S4`, `S6`, `S9`) | Kiinteät asemat (ruori, telineet, haaviteline, sumppu) + kädessä kannettavat esineet (`rod`, `net`) | Kaikuluotainasema (`sonar`), pilssipumppu (`bilge`), moottorihuolto |
+| **Modulaariset `RodState`-tekijät** (`S7–S12`) | Kireys ja sotku lasketaan modulaarisista syötteistä: nopeus, käännös, törmäys, slotti, pujotusasento, kalan veto | Pohjatärpit, roskat vieheessä, vieheen syvyyskäyrä |
+| **`EventDirector`** (`S19`) | Erillinen tapahtumasyöttäjä, joka rytmittää demossa tärpit/tuplatärpit ja aallokon/tuulen | Kalaparvitapahtumat, uistelukisan tilaukset (`orders`), moottoriviat |
