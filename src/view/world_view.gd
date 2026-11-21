@@ -49,6 +49,26 @@ func _init() -> void:
 		buoy.position = Vector3(cos(angle) * buoy_radius, 0.3, sin(angle) * buoy_radius)
 		add_child(buoy)
 
+	var pillar_mat := StandardMaterial3D.new()
+	pillar_mat.albedo_color = Color(0.76, 0.79, 0.83)
+	var pillar_cylinder := CylinderMesh.new()
+	pillar_cylinder.top_radius = 1.6
+	pillar_cylinder.bottom_radius = 2.0
+	pillar_cylinder.height = 10.0
+	pillar_cylinder.radial_segments = 8
+	pillar_cylinder.rings = 1
+	pillar_cylinder.material = pillar_mat
+
+	var outer_pillar_count := 8
+	var outer_pillar_radius := 110.0
+	var outer_angle_offset := TAU / float(outer_pillar_count * 2)
+	for i in range(outer_pillar_count):
+		var angle := (TAU / float(outer_pillar_count)) * float(i) + outer_angle_offset
+		var pillar := MeshInstance3D.new()
+		pillar.mesh = pillar_cylinder
+		pillar.position = Vector3(cos(angle) * outer_pillar_radius, 4.75, sin(angle) * outer_pillar_radius)
+		add_child(pillar)
+
 	boat_view = BoatView.new()
 	add_child(boat_view)
 
