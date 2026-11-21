@@ -1,27 +1,39 @@
 extends SceneTree
 
-func _init() -> void:
-	print("[TEST] Starting headless test runner...")
-	var failed := false
 
-	var rendering_method = ProjectSettings.get_setting("rendering/renderer/rendering_method")
-	if rendering_method != "gl_compatibility":
-		print("[FAIL] Expected rendering/renderer/rendering_method == 'gl_compatibility', got: %s" % str(rendering_method))
-		failed = true
+func _initialize() -> void:
+	var test_files: Array[String] = []
+	for file_name in DirAccess.get_files_at("res://tests/"):
+		if file_name.begins_with("test_") and file_name.ends_with(".gd") and file_name != "test_case.gd":
+			test_files.append(file_name)
+	test_files.sort()
 
-	var viewport_width = ProjectSettings.get_setting("display/window/size/viewport_width")
-	if viewport_width != 960:
-		print("[FAIL] Expected display/window/size/viewport_width == 960, got: %s" % str(viewport_width))
-		failed = true
+	var total_tests := 0
+	var failed_tests := 0
 
-	var viewport_height = ProjectSettings.get_setting("display/window/size/viewport_height")
-	if viewport_height != 540:
-		print("[FAIL] Expected display/window/size/viewport_height == 540, got: %s" % str(viewport_height))
-		failed = true
+	for file_name in test_files:
+		var script: GDScript = load("res://tests/" + file_name)
+		var inst = script.new()
+		var method_names: Array[String] = []
+		for method_info in script.get_script_method_list():
+			var method_name: String = method_info["name"]
+			if method_name.begins_with("test_"):
+				method_names.append(method_name)
+		method_names.sort()
 
-	if failed:
+		for method_name in method_names:
+			total_tests += 1
+			var before_count: int = inst.failures.size()
+			inst.call(method_name)
+			if inst.failures.size() == before_count:
+				print("[PASS] %s::%s" % [file_name, method_name])
+			else:
+				failed_tests += 1
+				for i in range(before_count, inst.failures.size()):
+					print("[FAIL] %s::%s: %s" % [file_name, method_name, inst.failures[i]])
+
+	print("[SUMMARY] %d tests, %d failed" % [total_tests, failed_tests])
+	if failed_tests > 0 or total_tests == 0:
 		quit(1)
-		return
-
-	print("[PASS] Slice 0 environment & project settings verified.")
-	quit(0)
+	else:
+		quit(0)
