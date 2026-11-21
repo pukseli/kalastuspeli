@@ -1,12 +1,13 @@
 class_name WorldView
 extends Node3D
 
-const CAMERA_OFFSET := Vector3(0.0, 14.0, 14.0)
+const CAMERA_OFFSET := Vector3(0.0, 7.0, 12.0)
+const CAMERA_PITCH_DEG: float = -28.0
 
 var boat_view: BoatView
 var camera: Camera3D
 var hud_label: Label
-var net_status_text: String = "Net: OFFLINE | Sync: 20 Hz"
+var net_status_text: String = "Net: OFFLINE | Sync: 20 Hz | Bots: 0"
 
 
 func _init() -> void:
@@ -48,7 +49,7 @@ func _init() -> void:
 
 	camera = Camera3D.new()
 	camera.position = CAMERA_OFFSET
-	camera.rotation_degrees = Vector3(-45.0, 0.0, 0.0)
+	camera.rotation = Vector3(deg_to_rad(CAMERA_PITCH_DEG), 0.0, 0.0)
 	add_child(camera)
 
 	hud_label = Label.new()
@@ -60,12 +61,25 @@ func apply_state(boat: BoatState, net_info: String = "") -> void:
 	if not net_info.is_empty():
 		net_status_text = net_info
 	boat_view.apply_state(boat)
-	camera.position = boat.world_position + CAMERA_OFFSET
+	_update_camera_and_hud(boat)
+
+
+func apply_game_state(game_state: GameState, net_info: String = "") -> void:
+	if not net_info.is_empty():
+		net_status_text = net_info
+	boat_view.apply_state(game_state.boat)
+	boat_view.apply_players(game_state.players)
+	_update_camera_and_hud(game_state.boat)
+
+
+func _update_camera_and_hud(boat: BoatState) -> void:
+	camera.position = boat.world_position + CAMERA_OFFSET.rotated(Vector3.UP, boat.heading)
+	camera.rotation = Vector3(deg_to_rad(CAMERA_PITCH_DEG), boat.heading, 0.0)
 
 	var fps := Engine.get_frames_per_second()
 	var draw_calls := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var primitives := int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
-	hud_label.text = "FPS: %d | Draw Calls: %d | Tris: %d\nSpeed: %.2f m/s | %s\nWASD / Arrows: Drive Boat | Press T to cycle sync Hz" % [
+	hud_label.text = "FPS: %d | Draw Calls: %d | Tris: %d\nSpeed: %.2f m/s | %s\nWASD: Walk | Arrows: Drive | B: Bots | T: Sync Hz" % [
 		fps,
 		draw_calls,
 		primitives,

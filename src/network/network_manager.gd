@@ -2,6 +2,7 @@ class_name NetworkManager
 extends Node
 
 signal snapshot_received(snapshot: Dictionary)
+signal game_snapshot_received(snapshot: Dictionary)
 
 const DEFAULT_PORT: int = 7777
 const DEFAULT_ADDRESS: String = "127.0.0.1"
@@ -13,10 +14,13 @@ var mode: String = "offline"
 var address: String = DEFAULT_ADDRESS
 var port: int = DEFAULT_PORT
 var sync_rate_hz: int = DEFAULT_SYNC_HZ
+var bot_count: int = 0
 var transport: NetworkTransport = NetworkTransport.new()
 
 var _tick_counter: int = 0
 var _client_inputs: Dictionary = {}
+var _connected_peers: Dictionary = {}
+var _disconnected_peers: Array[int] = []
 var _combined_input: PlayerInput = PlayerInput.new()
 
 
@@ -25,6 +29,7 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 	var parsed_address: String = DEFAULT_ADDRESS
 	var parsed_port: int = DEFAULT_PORT
 	var parsed_sync_hz: int = DEFAULT_SYNC_HZ
+	var parsed_bots: int = 0
 
 	var i := 0
 	while i < args.size():
@@ -45,6 +50,10 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 				if i + 1 < args.size() and args[i + 1].is_valid_int():
 					parsed_sync_hz = clampi(int(args[i + 1]), 1, PHYSICS_HZ)
 					i += 1
+			"--bots":
+				if i + 1 < args.size() and args[i + 1].is_valid_int():
+					parsed_bots = clampi(int(args[i + 1]), 0, CrewSimulator.MAX_BOTS)
+					i += 1
 		i += 1
 
 	return {
@@ -52,6 +61,7 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 		"address": parsed_address,
 		"port": parsed_port,
 		"sync_hz": parsed_sync_hz,
+		"bots": parsed_bots,
 	}
 
 
@@ -61,6 +71,7 @@ func configure_from_args(args: PackedStringArray) -> void:
 	address = str(cfg.get("address", DEFAULT_ADDRESS))
 	port = int(cfg.get("port", DEFAULT_PORT))
 	set_sync_rate_hz(int(cfg.get("sync_hz", DEFAULT_SYNC_HZ)))
+	set_bot_count(int(cfg.get("bots", 0)))
 
 
 func start_session() -> Error:
@@ -74,6 +85,8 @@ func start_session() -> Error:
 		if host_peer == null:
 			return ERR_CANT_CREATE
 		multiplayer.multiplayer_peer = host_peer
+		if not multiplayer.peer_connected.is_connected(_on_peer_connected):
+			multiplayer.peer_connected.connect(_on_peer_connected)
 		if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
 			multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 		return OK
@@ -99,6 +112,15 @@ func cycle_sync_rate() -> int:
 	return sync_rate_hz
 
 
+func set_bot_count(count: int) -> void:
+	bot_count = clampi(count, 0, CrewSimulator.MAX_BOTS)
+
+
+func cycle_bot_count() -> int:
+	bot_count = (bot_count + 1) % (CrewSimulator.MAX_BOTS + 1)
+	return bot_count
+
+
 func get_snapshot_interval_ticks() -> int:
 	return maxi(1, roundi(float(PHYSICS_HZ) / float(sync_rate_hz)))
 
@@ -111,6 +133,8 @@ func receive_client_input(peer_id: int, input_dict: Dictionary) -> void:
 	_client_inputs[peer_id] = {
 		"throttle": clampf(float(input_dict.get("throttle", 0.0)), -1.0, 1.0),
 		"steering": clampf(float(input_dict.get("steering", 0.0)), -1.0, 1.0),
+		"move_x": clampf(float(input_dict.get("move_x", 0.0)), -1.0, 1.0),
+		"move_z": clampf(float(input_dict.get("move_z", 0.0)), -1.0, 1.0),
 	}
 
 
@@ -142,14 +166,51 @@ func step_network_tick(boat_state: BoatState, local_input: PlayerInput, simulato
 	return {}
 
 
+func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: BoatSimulator, crew_sim: CrewSimulator) -> Dictionary:
+	if is_authority():
+		for disconnected_id in _disconnected_peers:
+			game_state.remove_player(disconnected_id)
+		_disconnected_peers.clear()
+
+		game_state.ensure_player(1, false)
+		var crew_inputs: Dictionary = {1: local_input}
+		for peer_id in _client_inputs:
+			var pid := int(peer_id)
+			game_state.ensure_player(pid, false)
+			crew_inputs[pid] = _client_inputs[peer_id]
+
+		crew_sim.sync_bots(game_state, bot_count)
+		var combined := get_combined_input(local_input)
+		boat_sim.step(game_state.boat, combined, BoatSimulator.FIXED_DELTA)
+		crew_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA)
+		game_state.tick += 1
+		_tick_counter += 1
+		if _tick_counter % get_snapshot_interval_ticks() == 0:
+			var snapshot := game_state.to_dict()
+			if mode == "host" and _has_active_peer():
+				rpc_sync_game_state.rpc(snapshot)
+			return snapshot
+		return {}
+
+	if _is_client_connected():
+		rpc_submit_client_input.rpc_id(1, local_input.to_dict())
+	return {}
+
+
 func apply_remote_snapshot(boat_state: BoatState, snapshot: Dictionary) -> void:
 	if snapshot.is_empty():
 		return
 	boat_state.from_dict(snapshot)
 
 
+func apply_game_snapshot(game_state: GameState, snapshot: Dictionary) -> void:
+	if snapshot.is_empty():
+		return
+	game_state.from_dict(snapshot)
+
+
 func get_status_text() -> String:
-	return "Net: %s | Sync: %d Hz" % [mode.to_upper(), sync_rate_hz]
+	return "Net: %s | Sync: %d Hz | Bots: %d" % [mode.to_upper(), sync_rate_hz, bot_count]
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -169,8 +230,29 @@ func rpc_sync_boat_state(snapshot: Dictionary) -> void:
 	snapshot_received.emit(snapshot)
 
 
+@rpc("authority", "call_remote", "unreliable_ordered")
+func rpc_sync_game_state(snapshot: Dictionary) -> void:
+	if is_authority():
+		return
+	game_snapshot_received.emit(snapshot)
+
+
+func _on_peer_connected(peer_id: int) -> void:
+	_connected_peers[peer_id] = true
+	if not _client_inputs.has(peer_id):
+		_client_inputs[peer_id] = {
+			"throttle": 0.0,
+			"steering": 0.0,
+			"move_x": 0.0,
+			"move_z": 0.0,
+		}
+
+
 func _on_peer_disconnected(peer_id: int) -> void:
 	_client_inputs.erase(peer_id)
+	_connected_peers.erase(peer_id)
+	if not _disconnected_peers.has(peer_id):
+		_disconnected_peers.append(peer_id)
 
 
 func _has_active_peer() -> bool:
