@@ -13,8 +13,8 @@
 
 | Rooli | Malli / Agentti | Vastuu |
 | :--- | :--- | :--- |
-| **Arkkitehti** | Pääagentti (kalliimpi malli) | Suunnittelee rajapinnat, kirjoittaa *Zero-Exploration*-tehtäväkortit (valmiit polut, luokat, tyypit ilman etsintää) ja tarkistaa testitulokset. Viittaa levylle kirjoitettuun viipalespeksiin ja hyväksymistestiin polulla toistamatta niitä promptissa (Zero-Duplication Prompt). |
-| **Rakentaja** | `flash`-alagentti | Tuottaa 85–90 % output-tokeneista (`.md`, `.gd`, yksikkötestit), ajaa `bash tests/run.sh`, ei muokkaa hyväksymistestejä (§4), ja korjaa virheet ennen palautusta. |
+| **Arkkitehti** | Pääagentti (kalliimpi malli) | Suunnittelee rajapinnat, kirjoittaa *Zero-Exploration*-tehtäväkortit (valmiit polut, sallitut ja kielletyt tiedostot ilman etsintää), lukitsee speksin ja testit SHA-256-tiivisteellä (`lock_slice.sh`) ennen Rakentajan ajoa ja ajaa hyväksyntäportin (`check_slice.sh`) aina itse. |
+| **Rakentaja** | `flash`-alagentti | Tuottaa 85–90 % output-tokeneista (`.md`, `.gd`, yksikkötestit) vain sallituissa tiedostoissa, ei tee git-committeja, noudattaa max 3 korjausyrityksen rajaa, ajaa `bash tests/run.sh`, ei muokkaa hyväksymistestejä (§4) ja raportoi tulosteet sellaisenaan. |
 | **Apuri** | `flash_lite`-alagentti | Mekaaniset rutiinitehtävät. |
 | **Token-Dense Specs** | Kaikki speksit | Kirjoitetaan tiiviinä taulukoina ja tyyppimäärittelyinä pitkän proosan sijaan. |
 
@@ -39,18 +39,19 @@
 
 ## 3. Automaattitestausstrategia (Headless Gatekeeper)
 
-Jokainen viipale verifioidaan komennolla:
+Jokainen viipale verifioidaan pääagentin ajamana porttiskriptillä (joka ajaa lopuksi `bash tests/run.sh`):
 
 ```bash
-bash tests/run.sh
+bash .agents/skills/godot-gatekeeper/scripts/check_slice.sh
 ```
 
 | Laatukriteeri | Vaatimus |
 | :--- | :--- |
-| **Paluukoodi** | `exit code 0` |
-| **Virheet** | `0` virhettä ja kaikki testit läpäisty |
+| **Viipaleen koko** | Speksi `≤ 60` ei-tyhjää riviä ja viipaletestit `≤ 5` `func test_` -metodia |
+| **Yksi skene & Core-raja** | Vain `src/main.tscn`; `src/core/` ilman `Node`/näkymä/verkkoriippuvuuksia |
+| **SHA-256 / Testilukko** | Lukitut hyväksymistestit ja speksit (`.agents/slice_lock.sha256`) muuttumattomat |
+| **Paluukoodi & Virheet** | `bash tests/run.sh` → `exit code 0`, `0` virhettä (`SCRIPT ERROR` / `ERROR:`) |
 | **Import-vaihe** | `class_name`-välimuisti syntyy vain `--import`-ajolla |
-| **Virheskannaus** | Ajonaikainen `SCRIPT ERROR` ei muuta Godotin paluukoodia → wrapper skannaa tulosteen |
 
 ### Testikäytännöt
 
@@ -66,8 +67,8 @@ bash tests/run.sh
 
 | Rooli | Vastuu ja rajat |
 | :--- | :--- |
-| **Arkkitehti** | Kirjoittaa viipalespeksin ja hyväksymistestit (`tests/test_*.gd`) ja tarkistaa diffin. |
-| **Rakentaja** | Kirjoittaa koodin, **ei saa muokata hyväksymistestejä** ja raportoi Arkkitehdille, jos testi vaikuttaa virheelliseltä. |
+| **Arkkitehti** | Kirjoittaa viipalespeksin ja hyväksymistestit (`tests/test_*.gd`), lukitsee ne `lock_slice.sh`:lla ennen delegointia, ajaa `check_slice.sh`:n itse ja hyväksyy korkeintaan **1** uusintapyynnön virheen sattuessa ennen muutosten palautusta (`git checkout`) ja omaa korjausta. |
+| **Rakentaja** | Muokkaa vain tehtäväkortissa sallittuja tiedostoja, **ei saa muokata lukittuja hyväksymistestejä eikä commitoida**, pysähtyy viimeistään 3 korjausyrityksen jälkeen ja raportoi tulosteet sellaisenaan Arkkitehdille. |
 | **Käyttäjä** | Hyväksyy speksin ennen koodia ja demon ennen kuin tila on `done`. |
 
 ## 5. Viipaleen koko

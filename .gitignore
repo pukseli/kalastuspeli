@@ -19,3 +19,6 @@ Thumbs.db
 
 # Local environment overrides (never commit secrets or host-specific prod overrides)
 config/env/*.local.cfg
+
+# Temporary slice SHA-256 lock created by lock_slice.sh
+.agents/slice_lock.sha256
