@@ -106,6 +106,6 @@ func test_view_parents_player_to_boat_and_rotates_camera_with_heading() -> void:
 	var p_view := players_container.get_child(0) as Node3D
 	assert_almost_eq(p_view.position.x, 0.5, 0.001, "PlayerView local x matches PlayerState")
 	assert_almost_eq(p_view.position.z, -1.0, 0.001, "PlayerView local z matches PlayerState")
-	assert_almost_eq(world.camera.rotation.y, PI / 2.0, 0.001, "Camera rotation.y follows boat heading")
+	assert_almost_eq(world.camera.rotation.y, wrapf(PI / 2.0 + PI, -PI, PI), 0.001, "Deck camera rotation.y faces aft relative to boat heading")
 	assert_almost_eq(world.camera.rotation_degrees.x, -28.0, 0.01, "Camera pitch is -28 degrees")
 	free_node(world)

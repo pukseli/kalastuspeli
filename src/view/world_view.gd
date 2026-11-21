@@ -10,9 +10,7 @@ var hud_label: Label
 var prompt_label: Label
 var net_status_text: String = "Net: OFFLINE | Peers: 0 | Sync: 20 Hz | Bots: 0"
 var debug_hud_enabled: bool = true
-
-var _current_cam_offset: Vector3 = CAMERA_OFFSET
-var _current_cam_pitch: float = CAMERA_PITCH_DEG
+var camera_controller: CameraController = CameraController.new()
 
 
 func _init() -> void:
@@ -73,8 +71,9 @@ func _init() -> void:
 	add_child(boat_view)
 
 	camera = Camera3D.new()
-	camera.position = CAMERA_OFFSET
-	camera.rotation = Vector3(deg_to_rad(CAMERA_PITCH_DEG), 0.0, 0.0)
+	var init_cam_xform := camera_controller.compute_camera_transform(Vector3.ZERO, 0.0)
+	camera.position = init_cam_xform["position"]
+	camera.rotation = init_cam_xform["rotation"]
 	add_child(camera)
 
 	hud_label = Label.new()
@@ -185,20 +184,13 @@ func _format_held_item_label(item: HeldItem) -> String:
 
 
 func _update_camera_and_hud(boat: BoatState, prompt: String, in_helm: bool, snap_camera: bool = false, held_label: String = "—") -> void:
-	var target_offset := StationConfig.HELM_CAM_OFFSET if in_helm else CAMERA_OFFSET
-	var target_pitch := StationConfig.HELM_CAM_PITCH_DEG if in_helm else CAMERA_PITCH_DEG
+	camera_controller.set_mode(in_helm, snap_camera)
+	camera_controller.step(snap_camera)
+	var cam_xform := camera_controller.compute_camera_transform(boat.world_position, boat.heading)
+	camera.position = cam_xform["position"]
+	camera.rotation = cam_xform["rotation"]
 
-	if snap_camera:
-		_current_cam_offset = target_offset
-		_current_cam_pitch = target_pitch
-	else:
-		_current_cam_offset = _current_cam_offset.lerp(target_offset, 0.15)
-		_current_cam_pitch = lerpf(_current_cam_pitch, target_pitch, 0.15)
-
-	camera.position = boat.world_position + _current_cam_offset.rotated(Vector3.UP, boat.heading)
-	camera.rotation = Vector3(deg_to_rad(_current_cam_pitch), boat.heading, 0.0)
-
-	var control_mode := "RUORISSA (Ajo: WASD / Nuolet | E: Poistu)" if in_helm else "KANNELLA (Kävely: WASD | E: Käytä) | Kädessä: %s" % held_label
+	var control_mode := camera_controller.get_control_mode_hud_text(in_helm, held_label)
 	if debug_hud_enabled:
 		var fps := Engine.get_frames_per_second()
 		var draw_calls := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))

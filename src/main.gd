@@ -11,6 +11,7 @@ var item_simulator: ItemSimulator = ItemSimulator.new()
 var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
+var _rmb_dragging: bool = false
 
 
 func _ready() -> void:
@@ -33,7 +34,8 @@ func _ready() -> void:
 	add_child(world_view)
 	world_view.configure_holders(item_config)
 	world_view.debug_hud_enabled = env_config.debug_hud
-	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id())
+	world_view.camera_controller.set_control_scheme(CameraController.parse_control_scheme_from_args(cli_args))
+	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id(), true)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -52,6 +54,31 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				network_manager.toggle_interpolation()
 		elif event.physical_keycode == KEY_E or event.keycode == KEY_E:
 			player_input.interact = true
+		elif event.physical_keycode == KEY_R or event.keycode == KEY_R:
+			world_view.camera_controller.reset_to_default(false)
+		elif event.physical_keycode == KEY_K or event.keycode == KEY_K:
+			world_view.camera_controller.cycle_control_scheme()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if world_view == null:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_RIGHT:
+			_rmb_dragging = mb.pressed
+		elif mb.button_index == MOUSE_BUTTON_MIDDLE and mb.pressed:
+			world_view.camera_controller.reset_to_default(false)
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+			var factor := mb.factor if mb.factor > 0.0 else 1.0
+			world_view.camera_controller.apply_zoom(1.0 * factor)
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+			var factor := mb.factor if mb.factor > 0.0 else 1.0
+			world_view.camera_controller.apply_zoom(-1.0 * factor)
+	elif event is InputEventMouseMotion:
+		if _rmb_dragging or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			var mm := event as InputEventMouseMotion
+			world_view.camera_controller.apply_mouse_drag(mm.relative)
 
 
 func _physics_process(_delta: float) -> void:
@@ -74,31 +101,45 @@ func _read_local_input() -> void:
 	var local_id := network_manager.get_local_peer_id()
 	var in_helm := local_id != 0 and int(game_state.stations.get(StationConfig.HELM_STATION_ID, 0)) == local_id
 
-	var move_x := 0.0
-	var move_z := 0.0
-	var throttle := 0.0
-	var steering := 0.0
+	var wasd_x := 0.0
+	var wasd_y := 0.0
+	var arrow_x := 0.0
+	var arrow_y := 0.0
 
-	if in_helm:
-		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
-			throttle += 1.0
-		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
-			throttle -= 1.0
-		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT):
-			steering += 1.0
-		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT):
-			steering -= 1.0
-	else:
-		if Input.is_physical_key_pressed(KEY_W):
-			move_z -= 1.0
-		if Input.is_physical_key_pressed(KEY_S):
-			move_z += 1.0
-		if Input.is_physical_key_pressed(KEY_A):
-			move_x -= 1.0
-		if Input.is_physical_key_pressed(KEY_D):
-			move_x += 1.0
+	if Input.is_physical_key_pressed(KEY_D):
+		wasd_x += 1.0
+	if Input.is_physical_key_pressed(KEY_A):
+		wasd_x -= 1.0
+	if Input.is_physical_key_pressed(KEY_W):
+		wasd_y += 1.0
+	if Input.is_physical_key_pressed(KEY_S):
+		wasd_y -= 1.0
 
-	player_input.move_x = move_x
-	player_input.move_z = move_z
-	player_input.throttle = throttle
-	player_input.steering = steering
+	if Input.is_physical_key_pressed(KEY_RIGHT):
+		arrow_x += 1.0
+	if Input.is_physical_key_pressed(KEY_LEFT):
+		arrow_x -= 1.0
+	if Input.is_physical_key_pressed(KEY_UP):
+		arrow_y += 1.0
+	if Input.is_physical_key_pressed(KEY_DOWN):
+		arrow_y -= 1.0
+
+	var mapped := CameraController.map_control_inputs(
+		world_view.camera_controller.control_scheme,
+		in_helm,
+		wasd_x,
+		wasd_y,
+		arrow_x,
+		arrow_y,
+		world_view.camera_controller.current_yaw
+	)
+
+	player_input.move_x = float(mapped["move_x"])
+	player_input.move_z = float(mapped["move_z"])
+	player_input.throttle = float(mapped["throttle"])
+	player_input.steering = float(mapped["steering"])
+	world_view.camera_controller.apply_axes(
+		float(mapped["cam_yaw_axis"]),
+		float(mapped["cam_pitch_axis"]),
+		BoatSimulator.FIXED_DELTA
+	)
