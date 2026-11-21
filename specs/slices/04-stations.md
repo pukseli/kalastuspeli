@@ -27,13 +27,13 @@ Ks. `specs/01-state-schema.md`.
 
 - **Asemakonfiguraatio (`StationConfig`):** Ruori `"helm"`, `local_position = Vector3(0.0, 0.25, -0.6)`, `radius = 1.0`.
 - **Varaus & vapautus (`StationSimulator.step`):**
-  - Jos pelaaja antaa `interact = true` ja etäisyys ruoriin `< radius` ja ruori on vapaa (`occupant == 0`), hänet lukitaan ruoriin (`stations["helm"] = peer_id`).
+  - Jos pelaaja antaa `interact = true` ja etäisyys vapaaseen asemaan (`occupant == 0`) on `<= radius`, hänet lukitaan asemaan (`stations[station_id] = peer_id`).
   - Jos ruorissa oleva pelaaja antaa `interact = true`, ruori vapautuu (`stations["helm"] = 0`).
   - Pelaajan poistuessa pelistä (`remove_player`), hänen varaamansa asema vapautuu automaattisesti (`occupant = 0`).
 - **Ruorissa olo ja ohjaus:**
   - Ruorissa olevan pelaajan `local_position` lukittuu ruorin sijaintiin eikä liiku kansikävelyllä.
   - Vain ruorissa olevan pelaajan syötteet säätävät veneen kaasua ja kääntökulmaa (`BoatSimulator.step`).
-  - **Säilyvä tila:** Kaasu ja kääntökulma säilyvät nykyisessä asennossaan näppäimen vapauduttua ja ruorista poistuttaessa. Vene jatkaa matkaa nykyisellä tilallaan.
+  - **Säilyvä tila:** Kaasu ja kääntökulma säilyvät nykyisessä asennossaan näppäimen vapauduttua ja ruorista poistuttaessa (`0.0`-keskinapsahdus ja progressiivinen ohjauskäyrä). Vene jatkaa matkaa nykyisellä tilallaan.
 - **Kamera & View:**
   - Kun paikallinen pelaaja on ruorissa, kamera siirtyy ohjaamonäkymään (`Vector3(0.0, 2.0, 1.2)`, pitch `-15°`). Muulloin kansinäkymä (`(0, 7, 12)`, `-28°`).
   - 3D-kannella näkyy ohjauspulpetti. HUD näyttää tilannekohtaisen kehotteen `[E] Tartu ruoriin` tai `[E] Irrota ote`.
@@ -57,8 +57,8 @@ Tiedosto: `tests/test_04_stations.gd` (5 testiä).
 ## 5. Manuaalinen verifiointi
 
 - Kävele pulpettia kohti → HUD näyttää `[E] Tartu ruoriin`.
-- Paina `E` → Kamera siirtyy ohjaamonäkymään tuulilasin taakse, hahmo pysyy ruorissa.
-- Kiihdytä ja käännä nuolilla → Vene kääntyy ja kiihtyy.
+- Paina `E` → Kamera siirtyy ohjaamonäkymään ruorin taakse, hahmo pysyy ruorissa.
+- Kiihdytä ja käännä WASD:llä tai nuolilla → Vene kääntyy ja kiihtyy.
 - Paina `E` → Hahmo irrottaa otteen, kamera palaa ylös, vene jatkaa ajamista kääntyen ja kulkien annetulla teholla.
 
 ## 6. Tiedostot

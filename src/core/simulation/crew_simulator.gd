@@ -41,8 +41,9 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA) -> v
 
 	for pid in ids:
 		var player: PlayerState = state.players[pid]
-		if state.is_player_at_station(pid):
-			player.local_position = StationConfig.HELM_LOCAL_POS
+		var station_id := state.get_player_station(pid)
+		if not station_id.is_empty():
+			player.local_position = StationConfig.get_station_position(station_id)
 		elif not player.is_bot and inputs.has(pid):
 			var move := _extract_move_vector(inputs[pid])
 			if move.length() > 1.0:
@@ -90,8 +91,9 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA) -> v
 
 	for pid in ids:
 		var p: PlayerState = state.players[pid]
-		if state.is_player_at_station(pid):
-			p.local_position = StationConfig.HELM_LOCAL_POS
+		var station_id := state.get_player_station(pid)
+		if not station_id.is_empty():
+			p.local_position = StationConfig.get_station_position(station_id)
 		_clamp_to_deck(p)
 
 

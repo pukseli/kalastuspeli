@@ -2,6 +2,7 @@ class_name BoatSimulator
 extends RefCounted
 
 const FIXED_DELTA: float = 1.0 / 60.0
+const DEFAULT_MAX_STEERING_ANGLE: float = deg_to_rad(35.0)
 const BOAT_MAX_SPEED: float = 8.0
 const BOAT_MAX_REVERSE_SPEED: float = -3.0
 const BOAT_WATER_DRAG: float = 2.5
@@ -15,7 +16,7 @@ class Config extends RefCounted:
 	var lateral_drag: float = 4.0
 	var angular_drag: float = 2.5
 	var water_friction: float = 1.0
-	var max_steering_angle: float = deg_to_rad(35.0)
+	var max_steering_angle: float = DEFAULT_MAX_STEERING_ANGLE
 	var steering_speed: float = 10.0
 	var max_forward_speed: float = 8.0
 	var max_reverse_speed: float = -3.0

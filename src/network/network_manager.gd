@@ -22,7 +22,6 @@ var _client_inputs: Dictionary = {}
 var _connected_peers: Dictionary = {}
 var _disconnected_peers: Array[int] = []
 var _combined_input: PlayerInput = PlayerInput.new()
-var _default_station_sim: StationSimulator = StationSimulator.new()
 
 
 static func parse_cli_args(args: PackedStringArray) -> Dictionary:
@@ -131,18 +130,23 @@ func is_authority() -> bool:
 
 
 func get_local_peer_id() -> int:
-	if mode == "client" and multiplayer != null and multiplayer.has_multiplayer_peer():
-		return multiplayer.get_unique_id()
+	if mode == "client":
+		if is_inside_tree() and multiplayer != null and multiplayer.has_multiplayer_peer():
+			return multiplayer.get_unique_id()
+		return 0
 	return 1
 
 
 func receive_client_input(peer_id: int, input_dict: Dictionary) -> void:
+	var prev_interact := false
+	if _client_inputs.has(peer_id):
+		prev_interact = bool(_client_inputs[peer_id].get("interact", false))
 	_client_inputs[peer_id] = {
 		"throttle": clampf(float(input_dict.get("throttle", 0.0)), -1.0, 1.0),
 		"steering": clampf(float(input_dict.get("steering", 0.0)), -1.0, 1.0),
 		"move_x": clampf(float(input_dict.get("move_x", 0.0)), -1.0, 1.0),
 		"move_z": clampf(float(input_dict.get("move_z", 0.0)), -1.0, 1.0),
-		"interact": bool(input_dict.get("interact", false)),
+		"interact": prev_interact or bool(input_dict.get("interact", false)),
 	}
 
 
@@ -175,7 +179,6 @@ func step_network_tick(boat_state: BoatState, local_input: PlayerInput, simulato
 
 
 func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: BoatSimulator, crew_sim: CrewSimulator, station_sim: StationSimulator = null) -> Dictionary:
-	var active_station_sim := station_sim if station_sim != null else _default_station_sim
 	if is_authority():
 		for disconnected_id in _disconnected_peers:
 			game_state.remove_player(disconnected_id)
@@ -191,8 +194,8 @@ func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: B
 		crew_sim.sync_bots(game_state, bot_count)
 		if station_sim != null:
 			station_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA)
-			station_sim.apply_helm_input_to_boat(game_state, crew_inputs, BoatSimulator.FIXED_DELTA)
-			boat_sim.step(game_state.boat, station_sim.get_active_boat_input(game_state), BoatSimulator.FIXED_DELTA)
+			station_sim.apply_helm_input_to_boat(game_state, crew_inputs, BoatSimulator.FIXED_DELTA, boat_sim.config.max_steering_angle)
+			boat_sim.step(game_state.boat, station_sim.get_active_boat_input(game_state, boat_sim.config.max_steering_angle), BoatSimulator.FIXED_DELTA)
 		else:
 			var combined := get_combined_input(local_input)
 			boat_sim.step(game_state.boat, combined, BoatSimulator.FIXED_DELTA)
@@ -212,7 +215,11 @@ func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: B
 		return {}
 
 	if _is_client_connected():
-		rpc_submit_client_input.rpc_id(1, local_input.to_dict())
+		if local_input.interact:
+			rpc_submit_client_interact.rpc_id(1)
+		var payload := local_input.to_dict()
+		payload["interact"] = false
+		rpc_submit_client_input.rpc_id(1, payload)
 	return {}
 
 
@@ -221,7 +228,6 @@ func apply_remote_snapshot(boat_state: BoatState, snapshot: Dictionary) -> void:
 		return
 	if not snapshot.is_empty():
 		boat_state.from_dict(snapshot)
-		snapshot_received.emit(snapshot)
 
 
 func apply_game_snapshot(game_state: GameState, snapshot: Dictionary) -> void:
@@ -229,7 +235,6 @@ func apply_game_snapshot(game_state: GameState, snapshot: Dictionary) -> void:
 		return
 	if not snapshot.is_empty():
 		game_state.from_dict(snapshot)
-		game_snapshot_received.emit(snapshot)
 
 
 func get_status_text() -> String:
@@ -240,36 +245,66 @@ func get_status_text() -> String:
 	return "Net: %s | Peers: %d | Sync: %d Hz | Bots: %d" % [mode_label, peer_count, sync_rate_hz, bot_count]
 
 
-@rpc("any_peer", "call_remote", "unreliable")
+@rpc("any_peer", "call_remote", "unreliable_ordered")
 func rpc_submit_client_input(input_dict: Dictionary) -> void:
 	if not is_authority():
 		return
 	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
 	receive_client_input(sender_id, input_dict)
 
 
-@rpc("authority", "call_remote", "unreliable")
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_submit_client_interact() -> void:
+	if not is_authority():
+		return
+	var sender_id := multiplayer.get_remote_sender_id()
+	if sender_id <= 0:
+		return
+	if not _client_inputs.has(sender_id):
+		_client_inputs[sender_id] = {
+			"throttle": 0.0,
+			"steering": 0.0,
+			"move_x": 0.0,
+			"move_z": 0.0,
+			"interact": true,
+		}
+	else:
+		_client_inputs[sender_id]["interact"] = true
+
+
+@rpc("authority", "call_remote", "unreliable_ordered")
 func rpc_sync_boat_state(snapshot: Dictionary) -> void:
 	if is_authority():
 		return
 	snapshot_received.emit(snapshot)
 
 
-@rpc("authority", "call_remote", "unreliable")
+@rpc("authority", "call_remote", "unreliable_ordered")
 func rpc_sync_game_state(snapshot: Dictionary) -> void:
 	if is_authority():
 		return
 	game_snapshot_received.emit(snapshot)
 
 
-func _on_peer_connected(id: int) -> void:
-	_connected_peers[id] = true
+func _on_peer_connected(peer_id: int) -> void:
+	_connected_peers[peer_id] = true
+	if not _client_inputs.has(peer_id):
+		_client_inputs[peer_id] = {
+			"throttle": 0.0,
+			"steering": 0.0,
+			"move_x": 0.0,
+			"move_z": 0.0,
+			"interact": false,
+		}
 
 
-func _on_peer_disconnected(id: int) -> void:
-	_connected_peers.erase(id)
-	_client_inputs.erase(id)
-	_disconnected_peers.append(id)
+func _on_peer_disconnected(peer_id: int) -> void:
+	_connected_peers.erase(peer_id)
+	_client_inputs.erase(peer_id)
+	if not _disconnected_peers.has(peer_id):
+		_disconnected_peers.append(peer_id)
 
 
 func _is_client_connected() -> bool:
@@ -284,4 +319,6 @@ func _is_client_connected() -> bool:
 
 
 func _has_active_peer() -> bool:
+	if not is_inside_tree() or multiplayer == null or not multiplayer.has_multiplayer_peer():
+		return false
 	return _is_client_connected() or not _connected_peers.is_empty()

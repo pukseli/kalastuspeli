@@ -31,21 +31,22 @@ func _init() -> void:
 	add_child(_make_box(Vector3(0.7, 0.8, 0.7), Vector3(0.0, 0.4, 3.7), motor_mat))
 
 	# Steering Console (Helm) in front of helm position
+	var helm_pos := StationConfig.HELM_LOCAL_POS
 	var console_mat := StandardMaterial3D.new()
 	console_mat.albedo_color = Color(0.3, 0.32, 0.35)
-	add_child(_make_box(Vector3(0.8, 0.5, 0.35), Vector3(0.0, 0.45, -0.95), console_mat))
+	add_child(_make_box(Vector3(0.8, 0.5, 0.35), helm_pos + Vector3(0.0, 0.20, -0.58), console_mat))
 
 	# Steering wheel / dash
 	var wheel_mat := StandardMaterial3D.new()
 	wheel_mat.albedo_color = Color(0.15, 0.15, 0.15)
-	add_child(_make_box(Vector3(0.3, 0.3, 0.06), Vector3(0.0, 0.72, -0.85), wheel_mat))
+	add_child(_make_box(Vector3(0.3, 0.3, 0.06), helm_pos + Vector3(0.0, 0.47, -0.38), wheel_mat))
 
 	# Low windshield with alpha transparency
 	var glass_mat := StandardMaterial3D.new()
 	glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	glass_mat.albedo_color = Color(0.5, 0.8, 0.95, 0.3)
 	glass_mat.roughness = 0.1
-	add_child(_make_box(Vector3(0.78, 0.18, 0.03), Vector3(0.0, 0.75, -1.0), glass_mat))
+	add_child(_make_box(Vector3(0.78, 0.18, 0.03), helm_pos + Vector3(0.0, 0.50, -0.62), glass_mat))
 
 	players_container = Node3D.new()
 	players_container.name = "PlayersContainer"
@@ -76,10 +77,14 @@ func apply_players(players: Dictionary) -> void:
 		if not players.has(pid):
 			var stale_view: PlayerView = _player_views[pid]
 			_player_views.erase(pid)
+			var was_in_tree := stale_view.is_inside_tree()
 			players_container.remove_child(stale_view)
-			if stale_view.is_inside_tree():
+			if was_in_tree:
 				stale_view.queue_free()
 			else:
+				for child in stale_view.get_children():
+					if child is MeshInstance3D:
+						(child as MeshInstance3D).mesh = null
 				stale_view.free()
 
 	for pid in players:

@@ -63,5 +63,5 @@
 | `players` | `Dictionary` | `{}` | `peer_id: int -> PlayerState` |
 | `stations` | `Dictionary` | `{"helm": 0}` | Asemat: `station_id: String -> occupant_peer_id: int` (lisätty S4) |
 
-**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`
+**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
