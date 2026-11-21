@@ -1,21 +1,21 @@
-# Slice 07 — Camera Controls & Screen-Relative Walk (`07-camera-controls`)
+# Slice 07 — Camera Controls & Control Profiles (`07-camera-controls`)
 
 ## 0. Tavoite
 
 | Kohta | Arvo |
 | :--- | :--- |
-| **Nyt voin** | kääntää kameraa (Field of Vision) vapaasti 360° kannella ja ruorissa, kävellä kamerasuuntaisesti ja palauttaa näkymän oletukseen (`R`) |
-| **Uusi käsite** | Client-paikallinen `CameraController` (`src/view/camera_controller.gd`, 0 verkkoreplikointia) |
+| **Nyt voin** | kääntää kameraa (Field of Vision) vapaasti 360° kannella ja ruorissa, kävellä kamerasuuntaisesti, palauttaa näkymän (`R`) ja vaihtaa ohjausprofiilia (`K`: `arrows_wasd` / `wasd_mouse`) |
+| **Uusi käsite** | Client-paikallinen, laite-agnostinen `CameraController` + semanttinen ohjausprofiili (`src/view/`) |
 | **Riippuvuudet** | `S3` (`03-crew-on-deck`), `S4` (`04-stations`), `S6` (`06-held-items`) |
 
 ## 1. Ei kuulu tähän viipaleeseen
 
-- Siimat ja vieheet (`S8`), kameran synkronointi verkon yli, ruorikameran kääntösektorin rajoitus (tarvittaessa myöhemmin)
-- Kameran törmäyssäde saariin tai esteisiin (`S16`)
+- Siimat ja vieheet (`S8`), peliohjaintuki ja täysi näppäinasetus-UI (backlog `xx-gamepad-and-keybinds`)
+- Kameran verkkosynkka, ruorikameran sektorirajoitus, kameran törmäyssäde saariin (`S16`)
 
 ## 2. State Delta
 
-Ei muutoksia tiedostoon `specs/01-state-schema.md` (`GameState` ja `PlayerInput` pysyvät muuttumattomina — kamera on client-paikallinen esitystila).
+Ei muutoksia tiedostoon `specs/01-state-schema.md` (`GameState` ja `PlayerInput` pysyvät muuttumattomina — kamera ja ohjausprofiili ovat client-paikallisia).
 
 | Luokka | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- | :--- |
@@ -24,11 +24,14 @@ Ei muutoksia tiedostoon `specs/01-state-schema.md` (`GameState` ja `PlayerInput`
 
 ## 3. Rules & Math
 
-- **Ohjaus ruorissa (`in_helm == true`):** Nuolinäppäimet (`↑/↓/←/→`) ohjaavat venettä (`throttle`/`steering`); `WASD` kääntää kameraa (`A/D` yaw vasen/oikea, `W/S` pitch ylös/alas).
-- **Ohjaus kannella (`in_helm == false`):** `WASD` kävelee **kamerasuuntaisesti** (`move_x = sx*cos(y) - sf*sin(y)`, `move_z = -sx*sin(y) - sf*cos(y)`, missä `y = current_yaw`); nuolinäppäimet (`←/→/↑/↓`) kääntävät kameraa.
-- **Reset & hiiri:** `R` palauttaa kameran pehmeästi tilan oletukseen; oikea hiiren nappi pohjassa + veto kääntää kameraa, hiiren rulla säätää kannen zoom-etäisyyttä (`[7.0, 20.0]` m). Tilanvaihto `E` (ruori ↔ kansi) palauttaa uuden tilan oletukseen.
-- **Pallokoordinaattikamera:** `fwd = (-cos(p)*sin(y), sin(p), -cos(p)*cos(y))`, `local_pos = current_pivot - fwd * current_dist`. Maailmasijainti `boat.world_position + local_pos.rotated(UP, heading)`, rotaatio `(p, wrapf(heading + y, -PI, PI), 0)`. Molemmissa tiloissa vapaa 360° yaw (`wrapf`).
-- **Regressiohuomio (`S3`):** Kannen oletussuunta kääntyy katsomaan perään (`+Z`, `yaw = PI`, `pitch = -28°`), jolloin koko kansi ja perän takaa 25+ m uistelualuetta näkyvät suoraan; toteutuksessa päivitetään `tests/test_03_crew_on_deck.gd` rivi 109 (`heading + PI`).
+- **Laite-agnostinen rajapinta:** `CameraController` vastaanottaa vain normalisoituja akseleita (`yaw_axis`, `pitch_axis`, `zoom_delta`, `reset()`), ilman `Input`- tai näppäinriippuvuuksia (valmis hiirelle ja tulevalle peliohjaimelle).
+- **Ohjausprofiilit (`K` / `--controls`):**
+  - `arrows_wasd` *(oletus)*: Ruorissa **Nuolet** = vene, **`WASD`** = kamera (+ oikea hiiri); kannella **`WASD`** = kamerasuuntainen kävely, **Nuolet** = kamera (+ oikea hiiri).
+  - `wasd_mouse`: Ruorissa **`WASD`** (ja Nuolet) = vene, **oikea hiiri** = kamera; kannella **`WASD`** = kamerasuuntainen kävely, **oikea hiiri** (ja Nuolet) = kamera.
+- **Kamerasuuntainen kävely:** `move_x = sx*cos(y) - sf*sin(y)`, `move_z = -sx*sin(y) - sf*cos(y)` (`y = current_yaw`).
+- **Reset & zoom:** `R` (ja hiiren keskinappi) palauttaa kameran pehmeästi tilan oletukseen; hiiren rulla säätää kannen etäisyyttä (`[7.0, 20.0]` m). Tilanvaihto `E` (ruori ↔ kansi) palauttaa uuden tilan oletukseen.
+- **Pallokoordinaattikamera:** `fwd = (-cos(p)*sin(y), sin(p), -cos(p)*cos(y))`, `local_pos = current_pivot - fwd * current_dist`, maailmasijainti `boat.world_position + local_pos.rotated(UP, heading)`, rotaatio `(p, wrapf(heading + y, -PI, PI), 0)`. Vapaa 360° yaw molemmissa tiloissa.
+- **Regressiohuomio (`S3`):** Kannen oletussuunta katsoo perään (`+Z`, `yaw = PI`, `pitch = -28°`), joten koko kansi ja 25+ m uistelualuetta näkyvät suoraan; toteutuksessa päivitetään `tests/test_03_crew_on_deck.gd` rivi 109 (`heading + PI`).
 
 | Parametri | Arvo | Yksikkö |
 | :--- | :--- | :--- |
@@ -44,19 +47,19 @@ Tiedosto: `tests/test_07_camera_controls.gd` (5 testiä).
 - `test_default_deck_and_helm_views_and_mode_switch_reset`: **Given** `WorldView` & `GameState` **When** tila vaihdetaan kansi ↔ ruori (`snap=true`) **Then** kansi katsoo perään (`heading + PI`, `-28°`), ruori eteen (`heading`, `-15°`, `HELM_CAM_OFFSET`) ja tilanvaihto nollaa offsetit.
 - `test_camera_360_yaw_pitch_clamping_and_reset`: **Given** `CameraController` kannella ja ruorissa **When** yaw käännetään yli ±180°, pitch yli rajojen ja kutsutaan `reset_to_default()` **Then** 360° yaw kiertää siististi, pitch rajautuu ja reset palauttaa oletukset.
 - `test_screen_relative_deck_walk_projection_tracks_camera_yaw`: **Given** `CameraController.project_deck_input` **When** testataan kulmilla `0`, `PI`, `+PI/2`, `-PI/2` **Then** `W` kulkee aina kameran eteen ja `D` 90° oikealle veneen paikallisessa koordinaatistossa.
-- `test_camera_zoom_clamps_and_mouse_drag_updates_orbit`: **Given** `CameraController` **When** hiiren vetoa ja zoom-rullaa syötetään yli rajojen **Then** kannen etäisyys rajautuu `[7.0, 20.0]` m, ruorin etäisyys pysyy `0.0` ja reset palauttaa oletusetäisyyden.
-- `test_camera_stays_client_local_and_updates_hud_controls`: **Given** `GameState` ja `WorldView` **When** paikallista kameraa käännetään **Then** `GameState.to_dict()` ei sisällä kamerakenttiä, `WorldView` päivittää kameran ja HUD näyttää `Nuolet` / `WASD` / `R`-ohjeet.
+- `test_control_profiles_and_zoom_clamping`: **Given** `arrows_wasd`- ja `wasd_mouse`-profiilit sekä zoom-/hiirisyötteet **When** syötteet mapataan ruorissa/kannella ja zoom viedään yli rajojen **Then** profiilit erottelevat ruorin ajo/kamera-akselit oikein, kannen zoom rajautuu `[7.0, 20.0]` m ja ruorin etäisyys pysyy `0.0`.
+- `test_camera_stays_client_local_and_updates_hud_controls`: **Given** `GameState` ja `WorldView` **When** paikallista kameraa käännetään ja profiilia vaihdetaan **Then** `GameState.to_dict()` ei sisällä kamerakenttiä, `WorldView` päivittää kameran ja HUD näyttää aktiivisen profiilin ohjeet.
 
 ## 5. Manuaalinen verifiointi
 
-- Testaa Offline ja Host+Client: ruorissa ajo nuolilla + kameran kääntö `WASD`:lla + reset `R`; kannella kamerasuuntainen kävely `WASD`:lla + kamera nuolilla ja hiiren oikealla napilla/rullalla + reset `R`; tarkista ettei toisen ikkunan kamera liiku ja budjetit (`FPS >= 60`, `Draw Calls < 100`, `Tris < 20 000`).
+- Testaa Offline ja Host+Client molemmilla profiileilla (`K`-vaihto): ruorissa ajo + kameran kääntö + reset `R`; kannella kamerasuuntainen kävely + kamera nuolilla & hiirellä + zoom rullalla + reset `R`; tarkista ettei toisen ikkunan kamera liiku ja budjetit (`FPS >= 60`, `Draw Calls < 100`, `Tris < 20 000`).
 
 ## 6. Tiedostot
 
 | Polku | Toimenpide | Vastuu |
 | :--- | :--- | :--- |
-| `src/view/camera_controller.gd` | `[NEW]` | Client-paikallinen pallokoordinaattikamera, 360° yaw, pitch, zoom, reset ja `project_deck_input` |
-| `src/view/world_view.gd` | `[MODIFY]` | `CameraController`-integraatio ja päivitetty HUD-ohjeteksti |
-| `src/main.gd` | `[MODIFY]` | Ruori (Nuolet=ajo, `WASD`=kamera), kansi (`WASD`=kamerasuuntainen kävely, Nuolet=kamera), `R`-reset ja hiiriohjaus |
+| `src/view/camera_controller.gd` | `[NEW]` | Laite-agnostinen pallokoordinaattikamera, 360° yaw, pitch, zoom, reset, `project_deck_input` ja profiilimappaus |
+| `src/view/world_view.gd` | `[MODIFY]` | `CameraController`-integraatio ja aktiivisen profiilin HUD-ohjeteksti |
+| `src/main.gd` | `[MODIFY]` | Profiilipohjainen syötteenluku (`arrows_wasd` / `wasd_mouse`, `K`, `--controls`), `R`/keskinappi-reset ja hiiriohjaus |
 | `tests/test_03_crew_on_deck.gd` | `[MODIFY]` | Päivitä rivi 109 uuteen kannen oletussuuntaan (`heading + PI`) |
 | `tests/test_07_camera_controls.gd` | `[NEW]` | 5 hyväksymistestiä |
