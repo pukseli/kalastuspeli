@@ -4,7 +4,7 @@ set -euo pipefail
 PORT="${1:-7777}"
 SYNC_HZ="${2:-20}"
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GODOT="${GODOT:-$HOME/.local/bin/godot}"
 
 if [[ ! -x "$GODOT" ]]; then
@@ -37,7 +37,7 @@ fi
 echo ""
 echo "Reminder: Ensure inbound UDP port $PORT is allowed in your firewall (ufw/firewalld)."
 echo "Laptop join command:"
-echo "  bash scripts/join_lan.sh $TOP_IP $PORT"
+echo "  bash tools/test-lan/join_lan.sh $TOP_IP $PORT"
 echo ""
 echo "[HOST] Starting kalastuspeli host on UDP *:$PORT (sync: $SYNC_HZ Hz)..."
-"$GODOT" --path "$PROJECT_DIR" -- --host --port "$PORT" --sync-hz "$SYNC_HZ"
+"$GODOT" --path "$PROJECT_DIR" -- --env test --host --port "$PORT" --sync-hz "$SYNC_HZ"

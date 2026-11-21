@@ -15,6 +15,8 @@ var address: String = DEFAULT_ADDRESS
 var port: int = DEFAULT_PORT
 var sync_rate_hz: int = DEFAULT_SYNC_HZ
 var bot_count: int = 0
+var max_clients: int = 4
+var env_config: EnvConfig = EnvConfig.new()
 var transport: NetworkTransport = NetworkTransport.new()
 
 var _tick_counter: int = 0
@@ -66,13 +68,47 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 	}
 
 
-func configure_from_args(args: PackedStringArray) -> void:
+func apply_env_config(cfg: EnvConfig) -> void:
+	if cfg == null:
+		return
+	env_config = cfg
+	address = cfg.default_address
+	port = cfg.default_port
+	set_sync_rate_hz(cfg.sync_hz)
+	max_clients = cfg.max_clients
+	transport.backend = cfg.transport
+	if not cfg.allow_bots:
+		bot_count = 0
+
+
+func configure_from_args(args: PackedStringArray, base_env: EnvConfig = null) -> void:
+	if base_env == null:
+		var cfg := parse_cli_args(args)
+		mode = str(cfg.get("mode", "offline"))
+		address = str(cfg.get("address", DEFAULT_ADDRESS))
+		port = int(cfg.get("port", DEFAULT_PORT))
+		set_sync_rate_hz(int(cfg.get("sync_hz", DEFAULT_SYNC_HZ)))
+		set_bot_count(int(cfg.get("bots", 0)))
+		_net_state = "offline"
+		return
+
+	apply_env_config(base_env)
 	var cfg := parse_cli_args(args)
 	mode = str(cfg.get("mode", "offline"))
-	address = str(cfg.get("address", DEFAULT_ADDRESS))
-	port = int(cfg.get("port", DEFAULT_PORT))
-	set_sync_rate_hz(int(cfg.get("sync_hz", DEFAULT_SYNC_HZ)))
-	set_bot_count(int(cfg.get("bots", 0)))
+	var has_explicit_join_ip := false
+	for i in range(args.size()):
+		if args[i] == "--join":
+			has_explicit_join_ip = (i + 1 < args.size() and not args[i + 1].begins_with("--"))
+	if has_explicit_join_ip:
+		address = str(cfg.get("address", address))
+	elif mode == "client" and address.is_empty():
+		address = DEFAULT_ADDRESS
+	if args.has("--port"):
+		port = int(cfg.get("port", port))
+	if args.has("--sync-hz"):
+		set_sync_rate_hz(int(cfg.get("sync_hz", sync_rate_hz)))
+	if args.has("--bots"):
+		set_bot_count(int(cfg.get("bots", 0)))
 	_net_state = "offline"
 
 
@@ -84,7 +120,7 @@ func start_session() -> Error:
 		return ERR_UNCONFIGURED
 
 	if mode == "host":
-		var host_peer := transport.create_host_peer(port)
+		var host_peer := transport.create_host(port, max_clients)
 		if host_peer == null:
 			_net_state = "bind_failed"
 			return ERR_CANT_CREATE
@@ -94,11 +130,11 @@ func start_session() -> Error:
 		if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
 			multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 		_net_state = "hosting"
-		print("[NET] Hosting on UDP *:%d (sync: %d Hz)" % [port, sync_rate_hz])
+		_log_net("[NET] Hosting on UDP *:%d (sync: %d Hz)" % [port, sync_rate_hz])
 		return OK
 
 	if mode == "client":
-		var client_peer := transport.create_client_peer(address, port)
+		var client_peer := transport.create_client(address, port)
 		if client_peer == null:
 			_net_state = "failed"
 			return ERR_CANT_CREATE
@@ -110,7 +146,7 @@ func start_session() -> Error:
 		if not multiplayer.server_disconnected.is_connected(_on_server_disconnected):
 			multiplayer.server_disconnected.connect(_on_server_disconnected)
 		_net_state = "connecting"
-		print("[NET] Connecting to %s:%d ..." % [address, port])
+		_log_net("[NET] Connecting to %s:%d ..." % [address, port])
 		return OK
 
 	return OK
@@ -128,10 +164,16 @@ func cycle_sync_rate() -> int:
 
 
 func set_bot_count(count: int) -> void:
+	if env_config != null and not env_config.allow_bots:
+		bot_count = 0
+		return
 	bot_count = clampi(count, 0, CrewSimulator.MAX_BOTS)
 
 
 func cycle_bot_count() -> int:
+	if env_config != null and not env_config.allow_bots:
+		bot_count = 0
+		return 0
 	bot_count = (bot_count + 1) % (CrewSimulator.MAX_BOTS + 1)
 	return bot_count
 
@@ -253,6 +295,21 @@ func apply_game_snapshot(game_state: GameState, snapshot: Dictionary) -> void:
 
 
 func get_status_text() -> String:
+	if env_config != null and not env_config.debug_hud:
+		if mode == "host":
+			if _net_state == "bind_failed":
+				return "HOST VIRHE"
+			return "HOST | Pelaajat: %d" % (_connected_peers.size() + 1)
+		if mode == "client":
+			if _is_client_connected():
+				return "YHDISTETTY"
+			if _net_state == "failed":
+				return "YHTEYS EPÄONNISTUI"
+			if _net_state == "disconnected":
+				return "YHTEYS KATKESI"
+			return "YHDISTETÄÄN..."
+		return "YKSINPELI"
+
 	if mode == "host":
 		var host_label := "HOST BIND FAILED (:%d)" % port if _net_state == "bind_failed" else "HOST (:%d)" % port
 		return "Net: %s | Peers: %d | Sync: %d Hz | Bots: %d" % [host_label, _connected_peers.size(), sync_rate_hz, bot_count]
@@ -319,7 +376,7 @@ func _on_peer_connected(peer_id: int) -> void:
 			"move_z": 0.0,
 			"interact": false,
 		}
-	print("[NET] Peer connected: %d" % peer_id)
+	_log_net("[NET] Peer connected: %d" % peer_id)
 
 
 func _on_peer_disconnected(peer_id: int) -> void:
@@ -327,22 +384,27 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_client_inputs.erase(peer_id)
 	if not _disconnected_peers.has(peer_id):
 		_disconnected_peers.append(peer_id)
-	print("[NET] Peer disconnected: %d" % peer_id)
+	_log_net("[NET] Peer disconnected: %d" % peer_id)
 
 
 func _on_connected_to_server() -> void:
 	_net_state = "connected"
-	print("[NET] Connected to server %s:%d (local peer_id=%d)" % [address, port, get_local_peer_id()])
+	_log_net("[NET] Connected to server %s:%d (local peer_id=%d)" % [address, port, get_local_peer_id()])
 
 
 func _on_connection_failed() -> void:
 	_net_state = "failed"
-	print("[NET] Connection failed to %s:%d (check Host IP, UDP port %d, and firewall)" % [address, port, port])
+	_log_net("[NET] Connection failed to %s:%d (check Host IP, UDP port %d, and firewall)" % [address, port, port])
 
 
 func _on_server_disconnected() -> void:
 	_net_state = "disconnected"
-	print("[NET] Disconnected from server %s:%d" % [address, port])
+	_log_net("[NET] Disconnected from server %s:%d" % [address, port])
+
+
+func _log_net(message: String) -> void:
+	if env_config == null or env_config.verbose_net_logs:
+		print(message)
 
 
 func _is_client_connected() -> bool:

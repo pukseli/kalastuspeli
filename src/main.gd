@@ -5,6 +5,7 @@ var player_input: PlayerInput = PlayerInput.new()
 var boat_simulator: BoatSimulator = BoatSimulator.new()
 var crew_simulator: CrewSimulator = CrewSimulator.new()
 var station_simulator: StationSimulator = StationSimulator.new()
+var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
 
@@ -16,21 +17,24 @@ func _ready() -> void:
 	var cli_args := OS.get_cmdline_user_args()
 	if cli_args.is_empty():
 		cli_args = OS.get_cmdline_args()
-	network_manager.configure_from_args(cli_args)
+	env_config = EnvConfig.load_for_runtime(cli_args)
+	network_manager.configure_from_args(cli_args, env_config)
 	network_manager.game_snapshot_received.connect(_on_game_snapshot_received)
 	network_manager.start_session()
 
 	world_view = WorldView.new()
 	add_child(world_view)
+	world_view.debug_hud_enabled = env_config.debug_hud
 	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id())
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_T or event.keycode == KEY_T:
-			network_manager.cycle_sync_rate()
+			if env_config.debug_hotkeys:
+				network_manager.cycle_sync_rate()
 		elif event.physical_keycode == KEY_B or event.keycode == KEY_B:
-			if network_manager.is_authority():
+			if env_config.debug_hotkeys and env_config.allow_bots and network_manager.is_authority():
 				network_manager.cycle_bot_count()
 		elif event.physical_keycode == KEY_E or event.keycode == KEY_E:
 			player_input.interact = true

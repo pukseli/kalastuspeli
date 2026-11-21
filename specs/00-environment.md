@@ -38,7 +38,32 @@
 | **Windowsin palomuuri** | Host-kone (pöytäkone / läppäri) | Salli saapuva **UDP 7777** Godot- tai pelibinäärille. |
 | **Tuotantoverkko (Julkaisu)** | Pelaajat kotireitittimien ja NAT-palomuurien takana | Vaatii NAT-läpäisevän siirtotien (Steam P2P Relay / WebRTC) tai pilvessä ajettavan Dedicated Headless Serverin. |
 
-## 4. Avoimet asiat
+## 4. Testi- vs. Tuotantoympäristön erottelu
+
+Peli erottelee kehitys-/testiympäristön (`test`) ja julkaisu-/tuotantoympäristön (`prod`) konfiguraatioprofiileilla, jotta testityökalut, debug-HUD, pikanäppäimet ja botit eivät vuoda tuotantobuildiin.
+
+### Profiilit (`config/env/`)
+- **`config/env/test.cfg`**: Kehitys- ja LAN-testiprofiili. `debug_hud=true`, `debug_hotkeys=true`, `verbose_net_logs=true`, `allow_bots=true`, `default_address="127.0.0.1"`.
+- **`config/env/prod.cfg`**: Tuotantoprofiili. `debug_hud=false`, `debug_hotkeys=false`, `verbose_net_logs=false`, `allow_bots=false`, `default_address=""` (ei kovakoodattua testiosoitetta).
+- **Paikalliset ylikirjoitukset**: `config/env/*.local.cfg` on `.gitignore`-tiedostossa eikä sitä commitoida versiohallintaan.
+
+### `EnvConfig`-latausjärjestys (4 kerrosta)
+`src/core/config/env_config.gd` (`EnvConfig`, puhdas `RefCounted`) lataa asetukset seuraavassa tärkeysjärjestyksessä (jälkimmäinen voittaa):
+1. **Profiilin oletukset + perusprofiilitiedosto**: `res://config/env/<env>.cfg` (profiili valitaan `--env` -> `KALASTUSPELI_ENV` -> `OS.has_feature("prod")` -> `"test"`).
+2. **Ylikirjoitustiedosto**: `--config <polku>` -> `KALASTUSPELI_CONFIG` -> `user://env.override.cfg`.
+3. **Ympäristömuuttujat**: `KALASTUSPELI_TRANSPORT`, `KALASTUSPELI_ADDRESS`, `KALASTUSPELI_PORT`, `KALASTUSPELI_SYNC_HZ`, `KALASTUSPELI_MAX_CLIENTS`, `KALASTUSPELI_DEBUG_HUD`, `KALASTUSPELI_DEBUG_HOTKEYS`, `KALASTUSPELI_VERBOSE_NET_LOGS`, `KALASTUSPELI_ALLOW_BOTS`.
+4. **Komentorivivivut (`NetworkManager.configure_from_args`)**: `--host`, `--join [IP]`, `--port`, `--sync-hz`, `--bots` (paitsi `--bots` pakotetaan nollaan, jos `allow_bots=false`).
+
+### Testiskriptit ja verkkokuljetus
+- **LAN-testiskriptit**: Skriptit sijaitsevat hakemistossa `tools/test-lan/` (`start_host_windows.ps1`, `start_host_linux.sh`, `join_lan.sh`), ja ne käynnistävät Godotin eksplisiittisellä `--env test` -vivulla. `tools/.gdignore` estää Godotia paketoimasta apuskriptejä pelin resursseihin.
+- **Transport-rajapinta**: `NetworkTransport.backend` (oletus `"enet"`) erottaa kuljetuskerroksen valinnan (`create_host` / `create_client`), mikä mahdollistaa tulevat tuotantosiirtotiet (esim. Steam P2P / WebRTC) ilman pelilogiikan muutoksia.
+
+### Tuotantoexportin muistilista
+- Lisää export-presettiin `prod` feature tag (`custom_features`), jolloin `EnvConfig.load_for_runtime` valitsee automaattisesti `prod`-profiilin.
+- Varmista export-suodattimessa, että `*.cfg` (erityisesti `config/env/prod.cfg`) sisällytetään exportattuun pakettiin.
+- Tuotantoversio ajetaan kohdealustan natiivilla ääniajurilla (älä käytä `--audio-driver Dummy` -vipua julkaisussa).
+
+## 5. Avoimet asiat
 
 | Asia | Tila / Suunnitelma |
 | :--- | :--- |

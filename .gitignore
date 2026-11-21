@@ -16,3 +16,6 @@ mono_crash.*.json
 Thumbs.db
 *.tmp
 *~
+
+# Local environment overrides (never commit secrets or host-specific prod overrides)
+config/env/*.local.cfg

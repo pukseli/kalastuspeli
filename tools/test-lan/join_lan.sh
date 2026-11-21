@@ -2,14 +2,14 @@
 set -euo pipefail
 
 if [[ -z "${1:-}" ]]; then
-  echo "Usage: bash scripts/join_lan.sh <HOST_IP> [PORT]"
+  echo "Usage: bash tools/test-lan/join_lan.sh <HOST_IP> [PORT]"
   exit 1
 fi
 
 HOST_IP="$1"
 PORT="${2:-7777}"
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GODOT="${GODOT:-$HOME/.local/bin/godot}"
 
 if [[ ! -x "$GODOT" ]]; then
@@ -38,5 +38,10 @@ else
   echo "[NET] ICMP ping to $HOST_IP did not reply (common with Windows Firewall; proceeding to UDP)."
 fi
 
+AUDIO_ARGS=()
+if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+  AUDIO_ARGS=(--audio-driver Dummy)
+fi
+
 echo "[CLIENT] Launching kalastuspeli client -> $HOST_IP:$PORT ..."
-"$GODOT" --path "$PROJECT_DIR" -- --join "$HOST_IP" --port "$PORT"
+"$GODOT" ${AUDIO_ARGS[@]+"${AUDIO_ARGS[@]}"} --path "$PROJECT_DIR" -- --env test --join "$HOST_IP" --port "$PORT"

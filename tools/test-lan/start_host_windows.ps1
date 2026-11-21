@@ -14,7 +14,8 @@ New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 # Locate local project directory or download repository archive
 $ProjectDir = $null
 if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
-    $CandidateDir = Split-Path $PSScriptRoot -Parent
+    $ToolsDir = Split-Path $PSScriptRoot -Parent
+    $CandidateDir = Split-Path $ToolsDir -Parent
     if (Test-Path (Join-Path $CandidateDir "project.godot")) {
         $ProjectDir = $CandidateDir
     }
@@ -121,7 +122,7 @@ else {
 
 Write-Host ""
 Write-Host "Laptop join command:"
-Write-Host "  bash scripts/join_lan.sh $TopIp $Port"
+Write-Host "  bash tools/test-lan/join_lan.sh $TopIp $Port"
 Write-Host ""
 
 # Configure temporary Windows Firewall inbound UDP rule if elevated
@@ -152,7 +153,7 @@ elseif (-not $NoFirewall) {
 
 Write-Host "[HOST] Starting kalastuspeli host on UDP *:$Port (sync: $SyncHz Hz)..."
 try {
-    & $GodotExe --path $ProjectDir -- --host --port $Port --sync-hz $SyncHz
+    & $GodotExe --path $ProjectDir -- --env test --host --port $Port --sync-hz $SyncHz
 }
 finally {
     if ($CreatedRule) {

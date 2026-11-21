@@ -9,6 +9,7 @@ var camera: Camera3D
 var hud_label: Label
 var prompt_label: Label
 var net_status_text: String = "Net: OFFLINE | Peers: 0 | Sync: 20 Hz | Bots: 0"
+var debug_hud_enabled: bool = true
 
 var _current_cam_offset: Vector3 = CAMERA_OFFSET
 var _current_cam_pitch: float = CAMERA_PITCH_DEG
@@ -129,20 +130,28 @@ func _update_camera_and_hud(boat: BoatState, prompt: String, in_helm: bool, snap
 	camera.position = boat.world_position + _current_cam_offset.rotated(Vector3.UP, boat.heading)
 	camera.rotation = Vector3(deg_to_rad(_current_cam_pitch), boat.heading, 0.0)
 
-	var fps := Engine.get_frames_per_second()
-	var draw_calls := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
-	var primitives := int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
-
 	var control_mode := "RUORISSA (Ajo: WASD / Nuolet | E: Poistu)" if in_helm else "KANNELLA (Kävely: WASD | E: Käytä)"
-	hud_label.text = "FPS: %d | Draw Calls: %d | Tris: %d\nNopeus: %.2f m/s | Kaasu: %.0f%% | Ruori: %.0f°\n%s\nTila: %s\nB: Botit | T: Sync Hz" % [
-		fps,
-		draw_calls,
-		primitives,
-		boat.forward_speed,
-		boat.throttle * 100.0,
-		rad_to_deg(boat.steering_angle),
-		net_status_text,
-		control_mode,
-	]
+	if debug_hud_enabled:
+		var fps := Engine.get_frames_per_second()
+		var draw_calls := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+		var primitives := int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+		hud_label.text = "[TEST] FPS: %d | Draw Calls: %d | Tris: %d\nNopeus: %.2f m/s | Kaasu: %.0f%% | Ruori: %.0f°\n%s\nTila: %s\nB: Botit | T: Sync Hz" % [
+			fps,
+			draw_calls,
+			primitives,
+			boat.forward_speed,
+			boat.throttle * 100.0,
+			rad_to_deg(boat.steering_angle),
+			net_status_text,
+			control_mode,
+		]
+	else:
+		hud_label.text = "Nopeus: %.2f m/s | Kaasu: %.0f%% | Ruori: %.0f°\n%s\nTila: %s" % [
+			boat.forward_speed,
+			boat.throttle * 100.0,
+			rad_to_deg(boat.steering_angle),
+			net_status_text,
+			control_mode,
+		]
 
 	prompt_label.text = prompt
