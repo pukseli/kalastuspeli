@@ -6,6 +6,7 @@ const CAMERA_OFFSET := Vector3(0.0, 14.0, 14.0)
 var boat_view: BoatView
 var camera: Camera3D
 var hud_label: Label
+var net_status_text: String = "Net: OFFLINE | Sync: 20 Hz"
 
 
 func _init() -> void:
@@ -55,16 +56,19 @@ func _init() -> void:
 	add_child(hud_label)
 
 
-func apply_state(boat: BoatState) -> void:
+func apply_state(boat: BoatState, net_info: String = "") -> void:
+	if not net_info.is_empty():
+		net_status_text = net_info
 	boat_view.apply_state(boat)
 	camera.position = boat.world_position + CAMERA_OFFSET
 
 	var fps := Engine.get_frames_per_second()
 	var draw_calls := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var primitives := int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
-	hud_label.text = "FPS: %d | Draw Calls: %d | Tris: %d\nSpeed: %.2f m/s\nWASD / Arrows: Drive Boat" % [
+	hud_label.text = "FPS: %d | Draw Calls: %d | Tris: %d\nSpeed: %.2f m/s | %s\nWASD / Arrows: Drive Boat | Press T to cycle sync Hz" % [
 		fps,
 		draw_calls,
 		primitives,
 		boat.forward_speed,
+		net_status_text,
 	]
