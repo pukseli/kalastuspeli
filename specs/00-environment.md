@@ -34,4 +34,12 @@
 | **Kotiverkon Aliverkko 1 (Pääreititin)** | Pöytäkone (Ethernet seinässä) + Mesh-tukiaseman WAN | Pöytäkone toimii **Hostina** (tai Dedicated Serverinä). |
 | **Kotiverkon Aliverkko 2 (Mesh WLAN NAT)** | `192.168.68.0/24` — Läppäri `192.168.68.113`, GW `192.168.68.1` | Läppäri yhdistää (**Join**) suoraan pöytäkoneen IP-osoitteeseen ulospäin Mesh-NATin läpi. |
 | **Kotiverkon Aliverkko 3 (WSL2 sisäinen NAT)** | `172.27.192.0/20` — WSL2 Linux `172.27.200.168`, GW `172.27.192.1` | Double NAT: ei riippuvuutta LAN UDP Broadcastista eri aliverkkojen välillä -> vaatii Direct IP Joinin ja Hostin paikallisten IP-osoitteiden näyttämisen. |
+| **WSL2 Hostina** | WSL2 NAT `172.27.x` | Saapuva UDP ei pääse WSL2:n NATin läpi (`netsh portproxy` ei tue UDP:tä). Ratkaisu: WSL:n `networkingMode=mirrored` (`.wslconfig`) **tai** Host ajetaan Windows-buildina. WSL2 **Clientina** toimii ilman muutoksia. |
+| **Windowsin palomuuri** | Host-kone (pöytäkone / läppäri) | Salli saapuva **UDP 7777** Godot- tai pelibinäärille. |
 | **Tuotantoverkko (Julkaisu)** | Pelaajat kotireitittimien ja NAT-palomuurien takana | Vaatii NAT-läpäisevän siirtotien (Steam P2P Relay / WebRTC) tai pilvessä ajettavan Dedicated Headless Serverin. |
+
+## 4. Avoimet asiat
+
+| Asia | Tila / Suunnitelma |
+| :--- | :--- |
+| **Export ja jakelu pöytäkoneelle** | Windows-export presetit + export templatet 4.3 → roadmap `xx-export` |
