@@ -13,7 +13,7 @@
 
 | Rooli | Malli / Agentti | Vastuu |
 | :--- | :--- | :--- |
-| **Arkkitehti** | Pääagentti (kalliimpi malli) | Suunnittelee rajapinnat, kirjoittaa *Zero-Exploration*-tehtäväkortit (valmiit polut, luokat, tyypit ilman etsintää) ja tarkistaa testitulokset. |
+| **Arkkitehti** | Pääagentti (kalliimpi malli) | Suunnittelee rajapinnat, kirjoittaa *Zero-Exploration*-tehtäväkortit (valmiit polut, luokat, tyypit ilman etsintää) ja tarkistaa testitulokset. Viittaa levylle kirjoitettuun viipalespeksiin ja hyväksymistestiin polulla toistamatta niitä promptissa (Zero-Duplication Prompt). |
 | **Rakentaja** | `flash`-alagentti | Tuottaa 85–90 % output-tokeneista (`.md`, `.gd`, yksikkötestit), ajaa `bash tests/run.sh`, ei muokkaa hyväksymistestejä (§4), ja korjaa virheet ennen palautusta. |
 | **Apuri** | `flash_lite`-alagentti | Mekaaniset rutiinitehtävät. |
 | **Token-Dense Specs** | Kaikki speksit | Kirjoitetaan tiiviinä taulukoina ja tyyppimäärittelyinä pitkän proosan sijaan. |

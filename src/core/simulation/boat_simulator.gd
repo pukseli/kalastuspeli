@@ -19,7 +19,7 @@ func step(boat: BoatState, input: PlayerInput, delta: float = FIXED_DELTA) -> vo
 		boat.forward_speed = move_toward(boat.forward_speed, 0.0, BOAT_WATER_DRAG * delta)
 
 	boat.forward_speed = clampf(boat.forward_speed, BOAT_MAX_REVERSE_SPEED, BOAT_MAX_SPEED)
-	boat.heading += steering * BOAT_TURN_SPEED * delta
+	boat.heading = wrapf(boat.heading + steering * BOAT_TURN_SPEED * delta, -PI, PI)
 
 	var forward_dir := Vector3(-sin(boat.heading), 0.0, -cos(boat.heading))
 	boat.world_position += forward_dir * boat.forward_speed * delta

@@ -1,6 +1,8 @@
 class_name WorldView
 extends Node3D
 
+const CAMERA_OFFSET := Vector3(0.0, 14.0, 14.0)
+
 var boat_view: BoatView
 var camera: Camera3D
 var hud_label: Label
@@ -44,7 +46,8 @@ func _init() -> void:
 	add_child(boat_view)
 
 	camera = Camera3D.new()
-	camera.position = Vector3(0.0, 14.0, 14.0)
+	camera.position = CAMERA_OFFSET
+	camera.rotation_degrees = Vector3(-45.0, 0.0, 0.0)
 	add_child(camera)
 
 	hud_label = Label.new()
@@ -54,9 +57,7 @@ func _init() -> void:
 
 func apply_state(boat: BoatState) -> void:
 	boat_view.apply_state(boat)
-	camera.position = boat.world_position + Vector3(0.0, 14.0, 14.0)
-	if camera.is_inside_tree():
-		camera.look_at(boat.world_position, Vector3.UP)
+	camera.position = boat.world_position + CAMERA_OFFSET
 
 	var fps := Engine.get_frames_per_second()
 	var draw_calls := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
@@ -67,10 +68,3 @@ func apply_state(boat: BoatState) -> void:
 		primitives,
 		boat.forward_speed,
 	]
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE:
-		for child in get_children():
-			if child is MeshInstance3D:
-				(child as MeshInstance3D).mesh = null

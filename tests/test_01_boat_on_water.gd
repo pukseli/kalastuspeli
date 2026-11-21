@@ -66,4 +66,4 @@ func test_world_and_boat_view_sync_transform() -> void:
 	assert_almost_eq(world.boat_view.position.x, 4.0, 0.001, "BoatView position.x matches BoatState")
 	assert_almost_eq(world.boat_view.position.z, -9.0, 0.001, "BoatView position.z matches BoatState")
 	assert_almost_eq(world.boat_view.rotation.y, 0.6, 0.001, "BoatView rotation.y matches BoatState.heading")
-	world.free()
+	free_node(world)

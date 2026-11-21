@@ -39,10 +39,3 @@ func _make_box(box_size: Vector3, pos: Vector3, mat: StandardMaterial3D) -> Mesh
 func apply_state(boat: BoatState) -> void:
 	position = boat.world_position
 	rotation.y = boat.heading
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_PREDELETE:
-		for child in get_children():
-			if child is MeshInstance3D:
-				(child as MeshInstance3D).mesh = null
