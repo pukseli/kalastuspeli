@@ -4,7 +4,7 @@
 
 | Kohta | Arvo |
 | :--- | :--- |
-| **Nyt voin** | poimia vavan telineestä käteen (`E`), kävellä sen kanssa kannella ja asettaa tai vaihtaa sen toiseen kylkitelineeseen (`-3..-1`, `+1..+3`) |
+| **Nyt voin** | poimia vavan telineestä käteen (`E`), kävellä sen kanssa kannella ja asettaa tai vaihtaa sen toiseen telineeseen (2 perässä, 2+2 kyljillä: `-3..-1`, `+1..+3`) |
 | **Uusi käsite** | Kannettava esine (`HeldItem`) ja konfiguroitava telineasettelu (`ItemConfig`) |
 | **Riippuvuudet** | `S3` (`03-crew-on-deck`), `S4` (`04-stations`), `S5` (`05-smooth-sync`) |
 
@@ -25,7 +25,7 @@ Ks. `specs/01-state-schema.md`. `GameState.item_config: ItemConfig` on staattine
 
 ## 3. Rules & Math
 
-- **Konfiguroitava `ItemConfig`:** Oletuksena 6 kylkitelinettä (`rod_-3..rod_-1`, `rod_+1..rod_+3`) ja `rod_count = 6` (`--rods <N>` / `ItemConfig`), täyttöjärjestys sisältä ulos (`-1, +1, -2, +2, -3, +3`) tai mukautetun veneen telinejärjestyksessä.
+- **Konfiguroitava `ItemConfig`:** Oletuksena 6 vapatelinettä (2 perässä `rod_-1/+1`, 2+2 kyljillä `rod_-3/-2`, `rod_+2/+3`) ja `rod_count = 6` (`--rods <N>` / `ItemConfig`), täyttöjärjestys sisältä ulos (`-1, +1, -2, +2, -3, +3`) tai mukautetun veneen telinejärjestyksessä.
 - **Interaktio (`E`):** 2D XZ -etäisyys `<= radius`, lähin yhteensopiva teline voittaa, deterministinen `peer_id`-järjestys; teline lukittuu tickin ajaksi ensimmäisen toimijan jälkeen. Tyhjin käsin poimii; vapa kädessä asettaa tyhjään tai vaihtaa (`swap`) varatun telineen kanssa; kaukana telineestä ei pudota kannelle.
 - **Ruori & disconnect:** `StationSimulator` estää ruorin varauksen esine kädessä (HUD `[Laske vapa ensin]`, yleinen `[Kädet täynnä]`); ruorista poistuminen samalla tickillä ei poimi vapaa. `GameState.remove_player` palauttaa kannetun esineen `last_holder_id`-telineeseen (jos vapaa) tai ensimmäiseen vapaaseen yhteensopivaan telineeseen.
 - **Verkko & näkymä:** `SnapshotInterpolator` lukee `items`-tilan diskreettinä uusimmasta snapshotista. `BoatView` luo telineet ja telinevavat dynaamisesti `ItemConfig`:sta; `PlayerView` näyttää kannetun vavan (`HeldItemAnchor`); `WorldView` näyttää `[E] Poimi/Aseta/Vaihda vapa (<slot>)`, `[Laske vapa ensin]` ja HUDin `Kädessä`-tilan.
@@ -33,7 +33,8 @@ Ks. `specs/01-state-schema.md`. `GameState.item_config: ItemConfig` on staattine
 | Parametri | Arvo | Yksikkö |
 | :--- | :--- | :--- |
 | `DEFAULT_ROD_COUNT` / `DEFAULT_HOLDER_RADIUS` / `HOLDER_MOUNT_Y` | `6` / `0.85` / `0.65` | kpl / m / m |
-| Kylkitelineet (`rod_-3..-1`, `rod_+1..+3`) | `X = ±1.55`, `Z = 0.6 / 1.6 / 2.6` | m |
+| Perätelineet (`rod_-1`, `rod_+1`) | `X = ±0.95`, `Z = 3.45` | m |
+| Kylkitelineet (`rod_-3/-2`, `rod_+2/+3`) | `X = ±1.55`, `Z = 0.8 / 2.1` | m |
 
 ## 4. Headless Acceptance Test
 

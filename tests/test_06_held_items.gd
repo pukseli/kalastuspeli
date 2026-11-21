@@ -10,6 +10,16 @@ func test_pickup_walk_place_and_no_deck_drop() -> void:
 	var crew_sim := CrewSimulator.new()
 
 	assert_eq(state.items.size(), 4, "4 rods should spawn when rod_count is 4")
+	var h_stern_l := cfg.get_holder("rod_-1")
+	var h_stern_r := cfg.get_holder("rod_+1")
+	var h_side_l2 := cfg.get_holder("rod_-2")
+	var h_side_l3 := cfg.get_holder("rod_-3")
+	var h_side_r2 := cfg.get_holder("rod_+2")
+	var h_side_r3 := cfg.get_holder("rod_+3")
+	assert_true((h_stern_l["local_position"] as Vector3).z > 3.0 and absf((h_stern_l["local_position"] as Vector3).x) < 1.2, "rod_-1 sits on left stern transom")
+	assert_true((h_stern_r["local_position"] as Vector3).z > 3.0 and absf((h_stern_r["local_position"] as Vector3).x) < 1.2, "rod_+1 sits on right stern transom")
+	assert_true(absf((h_side_l2["local_position"] as Vector3).x) > 1.4 and absf((h_side_l3["local_position"] as Vector3).x) > 1.4, "rod_-2 and rod_-3 sit on left gunwale")
+	assert_true(absf((h_side_r2["local_position"] as Vector3).x) > 1.4 and absf((h_side_r3["local_position"] as Vector3).x) > 1.4, "rod_+2 and rod_+3 sit on right gunwale")
 	assert_true(state.get_holder_item("rod_-1") != null, "rod_-1 should be populated first")
 	assert_true(state.get_holder_item("rod_+1") != null, "rod_+1 should be populated")
 	assert_true(state.get_holder_item("rod_-2") != null, "rod_-2 should be populated")
@@ -20,7 +30,7 @@ func test_pickup_walk_place_and_no_deck_drop() -> void:
 	var interact_in := PlayerInput.new()
 	interact_in.interact = true
 
-	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.6)
+	p1.local_position = Vector3(-0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
 	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
 
 	var rod := state.get_player_held_item(1)
@@ -41,7 +51,7 @@ func test_pickup_walk_place_and_no_deck_drop() -> void:
 	assert_eq(rod.holder_id, "", "Rod holder_id stays empty when no holder is nearby")
 
 	# Move near empty rod_-3 and place rod
-	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.6)
+	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
 	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
 	assert_true(state.get_player_held_item(1) == null, "Player 1 hands should be empty after placing rod")
 	assert_eq(rod.carrier_peer_id, 0, "Placed rod carrier_peer_id must be 0")
@@ -56,8 +66,8 @@ func test_swap_occupied_holder_and_same_tick_exclusivity() -> void:
 	var p1 := state.ensure_player(1)
 	var p2 := state.ensure_player(2)
 
-	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.6)
-	p2.local_position = Vector3(-1.2, CrewSimulator.DECK_SURFACE_Y, 2.55)
+	p1.local_position = Vector3(-0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
+	p2.local_position = Vector3(-0.9, CrewSimulator.DECK_SURFACE_Y, 2.95)
 	var interact_in := PlayerInput.new()
 	interact_in.interact = true
 
@@ -72,7 +82,7 @@ func test_swap_occupied_holder_and_same_tick_exclusivity() -> void:
 	assert_true(state.get_holder_item("rod_-1") == null, "rod_-1 must be vacant after pickup")
 
 	# Player 1 swaps rod_a with rod_b at occupied rod_-3
-	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.6)
+	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
 	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
 	assert_eq(rod_a.holder_id, "rod_-3", "Held rod_a should be placed into rod_-3 on swap")
 	assert_eq(rod_a.carrier_peer_id, 0, "Swapped-in rod_a carrier_peer_id must be 0")
@@ -80,7 +90,7 @@ func test_swap_occupied_holder_and_same_tick_exclusivity() -> void:
 	assert_eq(rod_b.holder_id, "", "Carried rod_b holder_id must be empty")
 
 	# Player 1 places rod_b into now-empty rod_-1
-	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.6)
+	p1.local_position = Vector3(-0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
 	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
 	assert_true(state.get_holder_item("rod_-3") == rod_a, "rod_-3 holds rod_a")
 	assert_true(state.get_holder_item("rod_-1") == rod_b, "rod_-1 holds rod_b")
@@ -102,7 +112,7 @@ func test_helm_blocked_while_holding_item_and_disconnect_returns_item() -> void:
 	var world := WorldView.new()
 
 	var p1 := state.ensure_player(1)
-	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.6)
+	p1.local_position = Vector3(-0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
 	var interact_in := PlayerInput.new()
 	interact_in.interact = true
 	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
@@ -125,16 +135,16 @@ func test_helm_blocked_while_holding_item_and_disconnect_returns_item() -> void:
 	# Fallback when last_holder_id is occupied by another player
 	var p2 := state.ensure_player(2)
 	var p3 := state.ensure_player(3)
-	p2.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 2.6)
+	p2.local_position = Vector3(0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
 	item_sim.step(state, {2: interact_in}, ItemSimulator.FIXED_DELTA)
 	var rod_b := state.get_player_held_item(2)
 	assert_true(rod_b != null, "Player 2 picked up rod_b from rod_+1")
 
-	p3.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 1.6)
+	p3.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
 	item_sim.step(state, {3: interact_in}, ItemSimulator.FIXED_DELTA)
 	var rod_c := state.get_player_held_item(3)
 	assert_true(rod_c != null, "Player 3 picked up rod_c from rod_+2")
-	p3.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 2.6)
+	p3.local_position = Vector3(0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
 	item_sim.step(state, {3: interact_in}, ItemSimulator.FIXED_DELTA)
 	assert_true(state.get_holder_item("rod_+1") == rod_c, "rod_+1 is now occupied by rod_c")
 	assert_true(state.get_holder_item("rod_+2") == null, "rod_+2 is now empty")
@@ -255,7 +265,7 @@ func test_items_replicate_over_network_interpolate_discretely_and_render_in_view
 	var host_input := PlayerInput.new()
 
 	var p2 := host_state.ensure_player(2)
-	p2.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 1.6)
+	p2.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
 	host_net.receive_client_input(2, {"throttle": 0.0, "steering": 0.0, "move_x": 0.0, "move_z": 0.0, "interact": true})
 	var snap := host_net.step_game_tick(host_state, host_input, boat_sim, crew_sim, station_sim, item_sim)
 
@@ -267,12 +277,12 @@ func test_items_replicate_over_network_interpolate_discretely_and_render_in_view
 	var snap_state_a := GameState.new()
 	snap_state_a.tick = 6
 	var sa_p2 := snap_state_a.ensure_player(2)
-	sa_p2.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 1.0)
+	sa_p2.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 1.5)
 
 	var snap_state_b := GameState.new()
 	snap_state_b.tick = 12
 	var sb_p2 := snap_state_b.ensure_player(2)
-	sb_p2.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 1.6)
+	sb_p2.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
 	var b_rod := snap_state_b.get_holder_item("rod_-2")
 	b_rod.carrier_peer_id = 2
 	b_rod.holder_id = ""
@@ -284,7 +294,7 @@ func test_items_replicate_over_network_interpolate_discretely_and_render_in_view
 
 	var out := GameState.new()
 	assert_true(interp.sample_at(out, 0.15, true), "Interpolator sample_at succeeds at midpoint")
-	assert_almost_eq(out.players[2].local_position.z, 1.3, 0.001, "Player 2 Z interpolates smoothly to midpoint 1.3")
+	assert_almost_eq(out.players[2].local_position.z, 1.8, 0.001, "Player 2 Z interpolates smoothly to midpoint 1.8")
 	assert_true(out.get_player_held_item(2) != null, "Interpolated state reads carried rod discretely from latest snapshot")
 
 	var world := WorldView.new()
@@ -294,11 +304,11 @@ func test_items_replicate_over_network_interpolate_discretely_and_render_in_view
 	assert_true(p2_view.has_visible_held_item(), "PlayerView shows held item when carrying rod")
 	assert_eq(world.boat_view.get_visible_resting_rod_count(), 5, "BoatView renders 5 resting rods when 1 is carried")
 
-	out.players[2].local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 1.6)
+	out.players[2].local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
 	world.apply_game_state(out, "", 2, true)
 	assert_eq(world.prompt_label.text, "[E] Aseta vapa (-2)", "Prompt shows place action near empty holder -2")
 
-	out.players[2].local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.6)
+	out.players[2].local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
 	world.apply_game_state(out, "", 2, true)
 	assert_eq(world.prompt_label.text, "[E] Vaihda vapa (-3)", "Prompt shows swap action near occupied holder -3")
 

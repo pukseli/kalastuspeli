@@ -32,6 +32,10 @@ func _init() -> void:
 	add_child(_make_box(Vector3(0.2, 0.4, 7.2), Vector3(-1.7, 0.45, 0.0), hull_mat))
 	add_child(_make_box(Vector3(0.2, 0.4, 7.2), Vector3(1.7, 0.45, 0.0), hull_mat))
 
+	# Left & Right Stern Transom Rails flanking the outboard motor
+	add_child(_make_box(Vector3(1.25, 0.4, 0.2), Vector3(-0.975, 0.45, 3.5), hull_mat))
+	add_child(_make_box(Vector3(1.25, 0.4, 0.2), Vector3(0.975, 0.45, 3.5), hull_mat))
+
 	# Bow / Front Marker (-Z forward)
 	add_child(_make_box(Vector3(1.6, 0.35, 1.2), Vector3(0.0, 0.4, -3.0), bow_mat))
 
@@ -143,7 +147,7 @@ func configure_holders(item_config: ItemConfig) -> void:
 			continue
 		var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
 		var side := int(holder.get("side", 1))
-		var tilt_deg := Vector3(12.0, 0.0, -float(side) * 35.0)
+		var tilt_deg: Vector3 = holder.get("tilt_degrees", Vector3(14.0, 0.0, -float(side) * 38.0))
 		var socket := MeshInstance3D.new()
 		socket.name = "Holder_%s" % hid
 		socket.mesh = _holder_socket_mesh

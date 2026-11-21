@@ -17,7 +17,7 @@ Peli suunnitellaan niin, että **6 vavan uistelussa yhtäaikaisia tehtäviä on 
 
 ## 2. 6 vavan uisteluasetelma kannella (`-3..-1 | +1..+3`)
 
-Veneen (`BoatView`) mitat ovat `3.6 m × 7.2 m`, kävelyalue `X ∈ [-1.3, 1.3]`, `Z ∈ [-2.1, 3.0]`, ruori `(0.0, 0.25, -0.6)` ja perämoottori `(0.0, 0.4, 3.7)`. Vapatelineet sijoitetaan veneen takaosan kyljille `~1.0 m` välein (`X ≈ ±1.55`), ja haaviteline sekä kalasumppu keski-/etukannelle selkeän liikkumiskierroksen luomiseksi.
+Veneen (`BoatView`) mitat ovat `3.6 m × 7.2 m`, kävelyalue `X ∈ [-1.3, 1.3]`, `Z ∈ [-2.1, 3.0]`, ruori `(0.0, 0.25, -0.6)` ja perämoottori `(0.0, 0.4, 3.7)`. Vapatelineet sijoitetaan selkeyden ja visuaalisuuden vuoksi siten, että 2 telinettä on perässä perämoottorin molemmin puolin (`X ≈ ±0.95, Z ≈ 3.45`) ja 2+2 telinettä veneen kyljillä (`X ≈ ±1.55, Z ≈ 0.8 / 2.1`), ja haaviteline sekä kalasumppu keski-/etukannelle selkeän liikkumiskierroksen luomiseksi.
 
 ```text
                    KEULA (-Z)
@@ -26,20 +26,19 @@ Veneen (`BoatView`) mitat ovat `3.6 m × 7.2 m`, kävelyalue `X ∈ [-1.3, 1.3]`
                |               |
   Haaviteline  |    [Kansi]    |  Kalasumppu (cooler)
                |               |
-  Vasen (-3)   |   Z ≈ 0.6     |  Oikea (+3)   <- ULOIN: vapaa kaista kelaukseen & haavitukseen
-  Vasen (-2)   |   Z ≈ 1.6     |  Oikea (+2)   <- KESKIMMÄINEN
-  Vasen (-1)   |   Z ≈ 2.6     |  Oikea (+1)   <- SISIN (lähellä perämoottoria)
-                \====[MOO]====/
-                  PERÄ (+Z)
+  Vasen (-3)   |   Z ≈ 0.8     |  Oikea (+3)   <- ULOIN kylki: vapaa kaista kelaukseen & haavitukseen
+  Vasen (-2)   |   Z ≈ 2.1     |  Oikea (+2)   <- TAKAKYLKI
+                \[-1]=[MOO]=[+1]/               <- PERÄ (`X ≈ ±0.95`, `Z ≈ 3.45`, sisimmät)
+                   PERÄ (+Z)
           \   \   \   | |   /   /   /
           -3  -2  -1  | |  +1  +2  +3   <- 6 siimaa & viehettä viuhkana vedessä
 ```
 
 | Positio (`Slot`) | Sijainti (`X`, `Z`) | Siimaviuhka | Sallittu käyttö |
 | :--- | :--- | :--- | :--- |
-| `-3` / `+3` | `X ≈ ∓1.55`, `Z ≈ 0.6` | Levein kulma, **uloin siima** | Uistelu + **ainoa paikka kalan kelaukseen veneen vierelle ja haavitukseen** |
-| `-2` / `+2` | `X ≈ ∓1.55`, `Z ≈ 1.6` | Keskikulma, keskisiima | Uistelu + pujotuksen väliaskel (ei saa kelata kalaa suoraan veneelle) |
-| `-1` / `+1` | `X ≈ ∓1.55`, `Z ≈ 2.6` | Kapein kulma, **sisin siima** | Uistelu lähimpänä perää (tärpin jälkeen pujotettava ulommaiseksi) |
+| `-3` / `+3` | `X ≈ ∓1.55`, `Z ≈ 0.8` | Levein kulma, **uloin kylkisiima** | Uistelu + **ainoa paikka kalan kelaukseen veneen vierelle ja haavitukseen** |
+| `-2` / `+2` | `X ≈ ∓1.55`, `Z ≈ 2.1` | Keskikulma, takakylkisiima | Uistelu + pujotuksen väliaskel (ei saa kelata kalaa suoraan veneelle) |
+| `-1` / `+1` | `X ≈ ∓0.95`, `Z ≈ 3.45` | Kapein kulma, **sisin peräsiima** | Uistelu perässä moottorin vieressä (tärpin jälkeen pujotettava ulommaiseksi) |
 
 ---
 

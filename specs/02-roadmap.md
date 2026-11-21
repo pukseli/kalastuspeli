@@ -12,7 +12,7 @@
 | S3 | `03-crew-on-deck` | kävellä 3D-hahmolla kannella matalammasta kamerakulmasta (`-28°`), nähdä toiset ikkunat ja säätää testipelaajia (`B` / `--bots`) | Paikallinen kansikoordinaatisto verkon yli | `done` |
 | S4 | `04-stations` | kävellä toimintopaikan äärelle, tarttua ruoriin (`E`), kokea ohjaamonäkymä ja säätää säilyvää kaasua/kääntöä keskinapsahduksilla | Yleinen `Station`-järjestelmä (`StationConfig.STATIONS`, `GameState.stations`), ohjaamonäkymä ja keskinapsahdus | `done` |
 | S5 | `05-smooth-sync` | nähdä veneen ja toisten pelaajien liikkuvan ilman nykimistä 100 ms viiveellä | Snapshot-interpolointi (viivesimulaatio testityökaluna) | `done` |
-| S6 | `06-held-items` | poimia vavan telineestä käteen, kävellä sen kanssa kannella ja asettaa sen toiseen kylkitelineeseen (`-3..-1`, `+1..+3`) | Kannettava esine (`HeldItem`) | `in-progress` |
+| S6 | `06-held-items` | poimia vavan telineestä käteen, kävellä sen kanssa kannella ja asettaa sen toiseen telineeseen (2 perässä, 2+2 kyljillä: `-3..-1`, `+1..+3`) | Kannettava esine (`HeldItem`) | `in-progress` |
 | S7 | `07-trolling-lines` | laskea siiman veteen, säätää sen pituutta ja nähdä vieheet viuhkana veneen perässä | `RodState` (siima ja viehe) | `draft` |
 | S8 | `08-bite-and-reel` | saada tärpin vapaan ja kelata kalan ulkolaidalta (`-3`/`+3`) veneen viereen | `FishState` (tärppi ja kelaus) | `draft` |
 | S9 | `09-landing-net-and-catch` | hakea haavin telineestä, kauhaista kalan ja kipata sen sumppuun, jolloin saalislaskuri kasvaa ⛳ | Haavitus (haavi → sumppu → saalislaskuri) | `draft` |

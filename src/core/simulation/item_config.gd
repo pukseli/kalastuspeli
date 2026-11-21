@@ -7,6 +7,8 @@ const DEFAULT_ROD_COUNT: int = 6
 const DEFAULT_HOLDER_RADIUS: float = 0.85
 const HOLDER_MOUNT_Y: float = 0.65
 const DEFAULT_SIDE_X: float = 1.55
+const DEFAULT_STERN_X: float = 0.95
+const DEFAULT_STERN_Z: float = 3.45
 
 var rod_count: int = DEFAULT_ROD_COUNT
 var holders: Array[Dictionary] = []
@@ -28,23 +30,22 @@ func _init(custom_holders: Array = [], custom_rod_count: int = DEFAULT_ROD_COUNT
 
 static func create_default_rod_holders() -> Array[Dictionary]:
 	var specs: Array[Dictionary] = [
-		{"slot": -3, "id": "rod_-3", "label": "-3", "side": -1, "z": 0.6},
-		{"slot": -2, "id": "rod_-2", "label": "-2", "side": -1, "z": 1.6},
-		{"slot": -1, "id": "rod_-1", "label": "-1", "side": -1, "z": 2.6},
-		{"slot": 1, "id": "rod_+1", "label": "+1", "side": 1, "z": 2.6},
-		{"slot": 2, "id": "rod_+2", "label": "+2", "side": 1, "z": 1.6},
-		{"slot": 3, "id": "rod_+3", "label": "+3", "side": 1, "z": 0.6},
+		{"slot": -3, "id": "rod_-3", "label": "-3", "side": -1, "pos": Vector3(-DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 0.8), "tilt": Vector3(14.0, 0.0, 38.0)},
+		{"slot": -2, "id": "rod_-2", "label": "-2", "side": -1, "pos": Vector3(-DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 2.1), "tilt": Vector3(14.0, 0.0, 38.0)},
+		{"slot": -1, "id": "rod_-1", "label": "-1", "side": -1, "pos": Vector3(-DEFAULT_STERN_X, HOLDER_MOUNT_Y, DEFAULT_STERN_Z), "tilt": Vector3(38.0, 0.0, 12.0)},
+		{"slot": 1, "id": "rod_+1", "label": "+1", "side": 1, "pos": Vector3(DEFAULT_STERN_X, HOLDER_MOUNT_Y, DEFAULT_STERN_Z), "tilt": Vector3(38.0, 0.0, -12.0)},
+		{"slot": 2, "id": "rod_+2", "label": "+2", "side": 1, "pos": Vector3(DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 2.1), "tilt": Vector3(14.0, 0.0, -38.0)},
+		{"slot": 3, "id": "rod_+3", "label": "+3", "side": 1, "pos": Vector3(DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 0.8), "tilt": Vector3(14.0, 0.0, -38.0)},
 	]
 	var result: Array[Dictionary] = []
 	for spec in specs:
-		var side := int(spec["side"])
-		var z := float(spec["z"])
 		result.append({
 			"id": str(spec["id"]),
 			"slot": int(spec["slot"]),
 			"label": str(spec["label"]),
-			"side": side,
-			"local_position": Vector3(float(side) * DEFAULT_SIDE_X, HOLDER_MOUNT_Y, z),
+			"side": int(spec["side"]),
+			"local_position": spec["pos"],
+			"tilt_degrees": spec["tilt"],
 			"radius": DEFAULT_HOLDER_RADIUS,
 			"allowed_types": [ITEM_TYPE_ROD],
 		})
@@ -94,12 +95,16 @@ func get_layout_signature() -> String:
 	var parts: Array[String] = []
 	for h in holders:
 		var pos: Vector3 = h.get("local_position", Vector3.ZERO)
-		parts.append("%s:%d:%.3f,%.3f,%.3f:%.3f" % [
+		var tilt: Vector3 = h.get("tilt_degrees", Vector3.ZERO)
+		parts.append("%s:%d:%.3f,%.3f,%.3f:%.2f,%.2f,%.2f:%.3f" % [
 			str(h.get("id", "")),
 			int(h.get("side", 0)),
 			pos.x,
 			pos.y,
 			pos.z,
+			tilt.x,
+			tilt.y,
+			tilt.z,
 			float(h.get("radius", DEFAULT_HOLDER_RADIUS)),
 		])
 	return "|".join(parts)
@@ -155,6 +160,13 @@ func _normalize_holder(raw: Dictionary) -> Dictionary:
 
 	var default_side := -1 if pos.x < 0.0 else 1
 	var side := int(raw.get("side", default_side))
+	var tilt := Vector3(14.0, 0.0, -float(side) * 38.0)
+	var raw_tilt: Variant = raw.get("tilt_degrees", null)
+	if raw_tilt is Vector3:
+		tilt = raw_tilt as Vector3
+	elif raw_tilt is Dictionary:
+		var td := raw_tilt as Dictionary
+		tilt = Vector3(float(td.get("x", tilt.x)), float(td.get("y", tilt.y)), float(td.get("z", tilt.z)))
 	var radius := maxf(0.05, float(raw.get("radius", DEFAULT_HOLDER_RADIUS)))
 	var label := str(raw.get("label", hid))
 
@@ -173,6 +185,7 @@ func _normalize_holder(raw: Dictionary) -> Dictionary:
 		"label": label,
 		"side": side,
 		"local_position": pos,
+		"tilt_degrees": tilt,
 		"radius": radius,
 		"allowed_types": allowed_types,
 	}
