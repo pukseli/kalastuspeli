@@ -7,7 +7,7 @@
 | S0 | Ympäristö ja perusta | ajaa headless-testiportin | Testiportti | `done` |
 | S1 | `01-boat-on-water` | ajaa venettä järvellä yhdessä ikkunassa | Core + 3D-näkymän runko | `done` |
 | S2 | `02-two-windows-one-boat` | nähdä saman veneen kahdessa ikkunassa (`--host` / `--join` / `--port` / `--sync-hz`, `T`-tickrate) | Verkkosynkka (vain `BoatState`) | `done` |
-| S3 | `03-crew-on-deck` | kävellä 3D-hahmolla kannella matalammasta kamerakulmasta (`-28°`), nähdä toiset ikkunat ja säätää testipelaajia (`B` / `--bots`) | Paikallinen kansikoordinaatisto verkon yli | `in-progress` |
+| S3 | `03-crew-on-deck` | kävellä 3D-hahmolla kannella matalammasta kamerakulmasta (`-28°`), nähdä toiset ikkunat ja säätää testipelaajia (`B` / `--bots`) | Paikallinen kansikoordinaatisto verkon yli | `done` |
 | S4 | `04-stations` | kävellä toimintopaikan äärelle, varata/vapauttaa sen (`E`) ja ohjata venettä vain `"helm"`-asemalta | Yleinen `Station`-järjestelmä (`station_id`, `occupant_peer_id`, 1 pelaaja / paikka) | `draft` |
 | S5 | `05-helm-controls` | säätää ruorissa vauhtisauvaa ja ohjauspyörää, jotka jäävät asentoonsa myös ruorista poistuessa | Tilallinen veneenohjaus (`throttle_lever`, `wheel_angle`, `0.0`-keskinapsahdus, osoitin) | `draft` |
 | S6 | `06-smooth-sync` | pelata ilman nykimistä 100 ms viiveellä | Interpolointi (vene + miehistö) + viivesimulaatio | `draft` |
@@ -30,6 +30,7 @@
 
 | Kohdeviipale | Mekaniikka | Speksattu sääntö |
 | :--- | :--- | :--- |
+| **S1 / Mekaniikka** | **Perämoottori, liuku ja hitaus (`specs/02-mechanics/boat-physics.md`)** | 2D X/Z-fysiikkamalli: kääntöpiste massakeskipisteessä (kansi pysyy ehjänä), perämoottorin vektoriohjaus kaasulla ja vapaalla, pakki jarruna/suunnan kääntäjänä, anisotrooppinen sivuttaisvastus (driftaus), hitaus ilman äkkijarrua sekä visuaalinen pitch/roll esityskerroksessa. |
 | **S3 (`03-crew-on-deck`)** | **Matalampi 3D-kamerakulma & 3D-hahmot** | Kamera tuodaan alemmas ja suunnataan enemmän eteenpäin (`-28°`), jotta 3D-syvyys, horisontti ja 3D-hahmot kannella tulevat esiin. Peli toimii myös yksinpelinä ja testipelaajia voi säätää lennosta (`B` / `--bots`, kevyet testinuket ilman AI:ta). |
 | **S4 (`04-stations`)** | **Yleinen toimintopaikka (`Station`)** | Veneessä on `N` kpl paikallisia toimintopaikkoja (esim. kuskin paikka `"helm"`, myöhemmin vavat, moottori, haavi). Toiminto aktivoituu **vain olemalla kyseisen paikan äärellä** (`E`, 1 pelaaja / paikka). Venettä ohjataan **vain** `"helm"`-asemalta (korvaa erillisen `driver_peer_id`-kentän yhdellä totuuden lähteellä `Station.occupant_peer_id`). |
 | **S5 (`05-helm-controls`)** | **Vauhtisauva (`throttle_lever`)** | `W` / `Up` siirtää vauhtisauvan asentoa (`throttle_lever: float`, `-1.0 .. 1.0`, alkutila `0.0`) eteenpäin ja `S` / `Down` taaksepäin. Kun näppäimen päästää irti, **vauhtisauva jää paikalleen** (myös jos kuski poistuu ruorista). Veneen tavoitenopeus määräytyy vauhtisauvan asennosta (`throttle_lever * max_speed`), jota kohti `forward_speed` hakeutuu. Pieni `0.0`-keskinapsahdus helpottaa pysäyttämistä. |
