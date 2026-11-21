@@ -2,7 +2,15 @@ class_name BoatView
 extends Node3D
 
 var players_container: Node3D
+var holders_container: Node3D
+var holder_rods_container: Node3D
 var _player_views: Dictionary = {}
+var _holder_meta: Dictionary = {}
+var _holder_rod_views: Dictionary = {}
+var _configured_layout_sig: String = ""
+var _holder_socket_mesh: CylinderMesh
+var _rod_shaft_mesh: CylinderMesh
+var _rod_tip_meshes: Array[CylinderMesh] = []
 var _current_pitch: float = 0.0
 var _current_roll: float = 0.0
 
@@ -48,9 +56,54 @@ func _init() -> void:
 	glass_mat.roughness = 0.1
 	add_child(_make_box(Vector3(0.78, 0.18, 0.03), helm_pos + Vector3(0.0, 0.50, -0.62), glass_mat))
 
+	holders_container = Node3D.new()
+	holders_container.name = "HoldersContainer"
+	add_child(holders_container)
+
+	holder_rods_container = Node3D.new()
+	holder_rods_container.name = "HolderRodsContainer"
+	add_child(holder_rods_container)
+
 	players_container = Node3D.new()
 	players_container.name = "PlayersContainer"
 	add_child(players_container)
+
+	_init_holder_resources()
+	configure_holders(ItemConfig.new())
+
+
+func _init_holder_resources() -> void:
+	var holder_mat := StandardMaterial3D.new()
+	holder_mat.albedo_color = Color(0.24, 0.26, 0.30)
+	_holder_socket_mesh = CylinderMesh.new()
+	_holder_socket_mesh.top_radius = 0.055
+	_holder_socket_mesh.bottom_radius = 0.065
+	_holder_socket_mesh.height = 0.30
+	_holder_socket_mesh.radial_segments = 8
+	_holder_socket_mesh.rings = 1
+	_holder_socket_mesh.material = holder_mat
+
+	var shaft_mat := StandardMaterial3D.new()
+	shaft_mat.albedo_color = Color(0.16, 0.17, 0.20)
+	_rod_shaft_mesh = CylinderMesh.new()
+	_rod_shaft_mesh.top_radius = 0.015
+	_rod_shaft_mesh.bottom_radius = 0.025
+	_rod_shaft_mesh.height = 1.6
+	_rod_shaft_mesh.radial_segments = 6
+	_rod_shaft_mesh.rings = 1
+	_rod_shaft_mesh.material = shaft_mat
+
+	for accent_color in PlayerView.ROD_ACCENT_PALETTE:
+		var tip_mat := StandardMaterial3D.new()
+		tip_mat.albedo_color = accent_color
+		var tip_mesh := CylinderMesh.new()
+		tip_mesh.top_radius = 0.018
+		tip_mesh.bottom_radius = 0.022
+		tip_mesh.height = 0.28
+		tip_mesh.radial_segments = 6
+		tip_mesh.rings = 1
+		tip_mesh.material = tip_mat
+		_rod_tip_meshes.append(tip_mesh)
 
 
 func _make_box(box_size: Vector3, pos: Vector3, mat: StandardMaterial3D) -> MeshInstance3D:
@@ -72,20 +125,137 @@ func apply_state(boat: BoatState) -> void:
 	rotation = Vector3(_current_pitch, boat.heading, _current_roll)
 
 
-func apply_players(players: Dictionary) -> void:
+func configure_holders(item_config: ItemConfig) -> void:
+	if item_config == null:
+		return
+	var sig := item_config.get_layout_signature()
+	if sig == _configured_layout_sig:
+		return
+	_configured_layout_sig = sig
+	_holder_meta.clear()
+	_holder_rod_views.clear()
+	_free_children_safe(holder_rods_container)
+	_free_children_safe(holders_container)
+
+	for holder in item_config.holders:
+		var hid := str(holder.get("id", ""))
+		if hid.is_empty():
+			continue
+		var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
+		var side := int(holder.get("side", 1))
+		var tilt_deg := Vector3(12.0, 0.0, -float(side) * 35.0)
+		var socket := MeshInstance3D.new()
+		socket.name = "Holder_%s" % hid
+		socket.mesh = _holder_socket_mesh
+		socket.position = pos
+		socket.rotation_degrees = tilt_deg
+		holders_container.add_child(socket)
+		_holder_meta[hid] = {
+			"local_position": pos,
+			"side": side,
+			"rotation_degrees": tilt_deg,
+		}
+
+
+func apply_items(items: Dictionary, item_config: ItemConfig = null) -> void:
+	if item_config != null:
+		configure_holders(item_config)
+
+	var active_resting: Dictionary = {}
+	for iid in items:
+		var item: HeldItem = items[iid]
+		if item != null and not item.is_carried() and _holder_meta.has(item.holder_id):
+			active_resting[str(iid)] = item
+
+	for existing_iid in _holder_rod_views.keys():
+		if not active_resting.has(existing_iid):
+			var stale_rod: Node3D = _holder_rod_views[existing_iid]
+			_holder_rod_views.erase(existing_iid)
+			_free_node_safe(stale_rod)
+
+	for iid in active_resting:
+		var item: HeldItem = active_resting[iid]
+		var meta: Dictionary = _holder_meta[item.holder_id]
+		var rod_node: Node3D
+		if _holder_rod_views.has(iid):
+			rod_node = _holder_rod_views[iid] as Node3D
+		else:
+			rod_node = _create_resting_rod_node(iid)
+			holder_rods_container.add_child(rod_node)
+			_holder_rod_views[iid] = rod_node
+
+		rod_node.position = meta["local_position"]
+		rod_node.rotation_degrees = meta["rotation_degrees"]
+		var tip := rod_node.get_node_or_null("Tip") as MeshInstance3D
+		if tip != null and not _rod_tip_meshes.is_empty():
+			tip.mesh = _rod_tip_meshes[posmod(item.color_index, _rod_tip_meshes.size())]
+
+
+func get_visible_resting_rod_count() -> int:
+	var count := 0
+	for child in holder_rods_container.get_children():
+		if child is Node3D and (child as Node3D).visible:
+			count += 1
+	return count
+
+
+func _create_resting_rod_node(item_id: String) -> Node3D:
+	var root := Node3D.new()
+	root.name = "RestingRod_%s" % item_id
+
+	var shaft := MeshInstance3D.new()
+	shaft.name = "Shaft"
+	shaft.mesh = _rod_shaft_mesh
+	shaft.position = Vector3(0.0, 0.80, 0.0)
+	root.add_child(shaft)
+
+	var tip := MeshInstance3D.new()
+	tip.name = "Tip"
+	tip.mesh = _rod_tip_meshes[0] if not _rod_tip_meshes.is_empty() else null
+	tip.position = Vector3(0.0, 1.55, 0.0)
+	root.add_child(tip)
+	return root
+
+
+func _clear_meshes_recursive(node: Node) -> void:
+	for child in node.get_children():
+		_clear_meshes_recursive(child)
+	if node is MeshInstance3D:
+		(node as MeshInstance3D).mesh = null
+
+
+func _free_node_safe(node: Node) -> void:
+	if node == null:
+		return
+	var was_in_tree := node.is_inside_tree()
+	if node.get_parent() != null:
+		node.get_parent().remove_child(node)
+	if was_in_tree:
+		node.queue_free()
+	else:
+		_clear_meshes_recursive(node)
+		node.free()
+
+
+func _free_children_safe(parent: Node) -> void:
+	if parent == null:
+		return
+	for child in parent.get_children():
+		_free_node_safe(child)
+
+
+func apply_players(players: Dictionary, items: Dictionary = {}) -> void:
 	for pid in _player_views.keys():
 		if not players.has(pid):
 			var stale_view: PlayerView = _player_views[pid]
 			_player_views.erase(pid)
-			var was_in_tree := stale_view.is_inside_tree()
-			players_container.remove_child(stale_view)
-			if was_in_tree:
-				stale_view.queue_free()
-			else:
-				for child in stale_view.get_children():
-					if child is MeshInstance3D:
-						(child as MeshInstance3D).mesh = null
-				stale_view.free()
+			_free_node_safe(stale_view)
+
+	var carried_by_peer: Dictionary = {}
+	for iid in items:
+		var item: HeldItem = items[iid]
+		if item != null and item.is_carried():
+			carried_by_peer[item.carrier_peer_id] = item
 
 	for pid in players:
 		var player_state: PlayerState = players[pid]
@@ -98,3 +268,4 @@ func apply_players(players: Dictionary) -> void:
 			players_container.add_child(view)
 			_player_views[pid] = view
 		view.apply_state(player_state)
+		view.apply_held_item(carried_by_peer.get(int(pid), null) as HeldItem)

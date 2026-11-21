@@ -62,6 +62,24 @@
 | `boat` | `BoatState` | `BoatState.new()` | Veneen maailmatila |
 | `players` | `Dictionary` | `{}` | `peer_id: int -> PlayerState` |
 | `stations` | `Dictionary` | `{"helm": 0}` | Asemat: `station_id: String -> occupant_peer_id: int` (lisätty S4) |
+| `items` | `Dictionary` | `item_config.create_initial_items()` | Kannettavat esineet: `item_id: String -> HeldItem` (lisätty S6) |
+| `item_config` | `ItemConfig` | `ItemConfig.new()` | Staattinen telineasettelu ja `rod_count` (ei replikoidu, lisätty S6) |
 
-**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`
+**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`, `configure_items(cfg: ItemConfig) -> void`, `get_player_held_item(peer_id: int) -> HeldItem`, `is_player_holding_item(peer_id: int) -> bool`, `get_holder_item(holder_id: String) -> HeldItem`, `return_item_to_holder(item: HeldItem) -> bool`
+**Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
+
+### Viipale S6 (`06-held-items`)
+
+#### 5. `HeldItem` (`extends RefCounted`, `src/core/state/held_item.gd`)
+
+| Kenttä | Tyyppi | Oletus | Kuvaus |
+| :--- | :--- | :--- | :--- |
+| `id` | `String` | `""` | Esineen yksilöllinen tunniste (esim. `"rod_1"`) |
+| `item_type` | `String` | `"rod"` | Esineen tyyppi (`"rod"`, laajennettavissa S9:ssä `"net"` jne.) |
+| `color_index` | `int` | `0` | Korostusväri-indeksi (`0 .. 5`) |
+| `carrier_peer_id` | `int` | `0` | Kantavan pelaajan `peer_id` (`0` = telineessä) |
+| `holder_id` | `String` | `""` | Nykyisen telineen tunniste (`""` = kädessä) |
+| `last_holder_id` | `String` | `""` | Viimeisin teline disconnect-palautusta varten |
+
+**Apumetodit:** `is_carried() -> bool`, `clone() -> HeldItem`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`

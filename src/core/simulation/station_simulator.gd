@@ -55,6 +55,8 @@ func step(state: GameState, inputs: Dictionary, _delta: float = FIXED_DELTA) -> 
 		if not current_station.is_empty():
 			state.stations[current_station] = 0
 		else:
+			if state.is_player_holding_item(pid):
+				continue
 			var best_sid := ""
 			var best_dist := INF
 			for sid in station_ids:

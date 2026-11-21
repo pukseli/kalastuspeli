@@ -5,6 +5,8 @@ var tick: int = 0
 var boat: BoatState = BoatState.new()
 var players: Dictionary = {}
 var stations: Dictionary = StationConfig.create_default_stations()
+var item_config: ItemConfig = ItemConfig.new()
+var items: Dictionary = item_config.create_initial_items()
 
 var helm_steer_detent_timer: float = 0.0
 var helm_steer_detent_sign: int = 0
@@ -58,6 +60,63 @@ func remove_player(peer_id: int) -> void:
 			if str(sid) == StationConfig.HELM_STATION_ID:
 				reset_helm_detents()
 				helm_last_occupant = 0
+	var carried_ids: Array[String] = []
+	for iid in items:
+		var item: HeldItem = items[iid]
+		if item != null and item.carrier_peer_id == peer_id:
+			carried_ids.append(str(iid))
+	carried_ids.sort()
+	for iid in carried_ids:
+		return_item_to_holder(items[iid] as HeldItem)
+
+
+func configure_items(cfg: ItemConfig) -> void:
+	item_config = cfg if cfg != null else ItemConfig.new()
+	items = item_config.create_initial_items()
+
+
+func get_player_held_item(peer_id: int) -> HeldItem:
+	if peer_id == 0:
+		return null
+	for iid in items:
+		var item: HeldItem = items[iid]
+		if item != null and item.carrier_peer_id == peer_id:
+			return item
+	return null
+
+
+func is_player_holding_item(peer_id: int) -> bool:
+	return get_player_held_item(peer_id) != null
+
+
+func get_holder_item(holder_id: String) -> HeldItem:
+	if holder_id.is_empty():
+		return null
+	for iid in items:
+		var item: HeldItem = items[iid]
+		if item != null and not item.is_carried() and item.holder_id == holder_id:
+			return item
+	return null
+
+
+func return_item_to_holder(item: HeldItem) -> bool:
+	if item == null:
+		return false
+	var target_id := ""
+	if not item.last_holder_id.is_empty() and item_config.is_type_allowed(item.last_holder_id, item.item_type) and get_holder_item(item.last_holder_id) == null:
+		target_id = item.last_holder_id
+	else:
+		for holder in item_config.get_compatible_holders(item.item_type):
+			var hid := str(holder.get("id", ""))
+			if not hid.is_empty() and get_holder_item(hid) == null:
+				target_id = hid
+				break
+	if target_id.is_empty():
+		return false
+	item.carrier_peer_id = 0
+	item.holder_id = target_id
+	item.last_holder_id = target_id
+	return true
 
 
 func to_dict() -> Dictionary:
@@ -65,11 +124,16 @@ func to_dict() -> Dictionary:
 	for pid in players:
 		var p: PlayerState = players[pid]
 		players_dict[str(pid)] = p.to_dict()
+	var items_dict := {}
+	for iid in items:
+		var item: HeldItem = items[iid]
+		items_dict[str(iid)] = item.to_dict()
 	return {
 		"tick": tick,
 		"boat": boat.to_dict(),
 		"players": players_dict,
 		"stations": stations.duplicate(),
+		"items": items_dict,
 	}
 
 
@@ -101,3 +165,23 @@ func from_dict(data: Dictionary) -> void:
 		for sid in raw_stations:
 			next_stations[str(sid)] = int(raw_stations[sid])
 		stations = next_stations
+
+	var raw_items: Variant = data.get("items", null)
+	if raw_items is Dictionary:
+		var incoming_item_ids: Dictionary = {}
+		for raw_iid in raw_items:
+			var iid := str(raw_iid)
+			var i_data: Variant = raw_items[raw_iid]
+			if i_data is Dictionary:
+				incoming_item_ids[iid] = true
+				var item: HeldItem
+				if items.has(iid) and items[iid] is HeldItem:
+					item = items[iid] as HeldItem
+				else:
+					item = HeldItem.new()
+					items[iid] = item
+				item.from_dict(i_data)
+				item.id = iid
+		for existing_iid in items.keys():
+			if not incoming_item_ids.has(existing_iid):
+				items.erase(existing_iid)

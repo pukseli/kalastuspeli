@@ -6,6 +6,8 @@ var player_input: PlayerInput = PlayerInput.new()
 var boat_simulator: BoatSimulator = BoatSimulator.new()
 var crew_simulator: CrewSimulator = CrewSimulator.new()
 var station_simulator: StationSimulator = StationSimulator.new()
+var item_config: ItemConfig = ItemConfig.new()
+var item_simulator: ItemSimulator = ItemSimulator.new()
 var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
@@ -20,11 +22,16 @@ func _ready() -> void:
 		cli_args = OS.get_cmdline_args()
 	env_config = EnvConfig.load_for_runtime(cli_args)
 	network_manager.configure_from_args(cli_args, env_config)
+	item_config = ItemConfig.create_default_config(network_manager.rod_count)
+	item_simulator = ItemSimulator.new(item_config)
+	game_state.configure_items(item_config)
+	render_state.configure_items(item_config)
 	network_manager.game_snapshot_received.connect(_on_game_snapshot_received)
 	network_manager.start_session()
 
 	world_view = WorldView.new()
 	add_child(world_view)
+	world_view.configure_holders(item_config)
 	world_view.debug_hud_enabled = env_config.debug_hud
 	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id())
 
@@ -49,7 +56,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _physics_process(_delta: float) -> void:
 	_read_local_input()
-	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator)
+	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator, item_simulator)
 	player_input.interact = false
 	var display_state := game_state
 	if not network_manager.is_authority() and network_manager.interpolation_enabled:

@@ -15,10 +15,12 @@ var render_time: float = 0.0
 var current_delay: float = MIN_INTERP_DELAY
 var measured_interval: float = 3.0 * FIXED_DELTA
 var latest_stations: Dictionary = StationConfig.create_default_stations()
+var latest_items: Dictionary = {}
 
 var _buffer: Array[Dictionary] = []
 var _has_snapshot: bool = false
 var _last_tick: int = -1
+var _has_latest_items: bool = false
 
 
 ## Clears buffered snapshots and resets clock/delay tracking to defaults.
@@ -30,6 +32,8 @@ func clear() -> void:
 	current_delay = MIN_INTERP_DELAY
 	measured_interval = 3.0 * FIXED_DELTA
 	latest_stations = StationConfig.create_default_stations()
+	latest_items.clear()
+	_has_latest_items = false
 
 
 ## Returns the number of snapshots currently buffered.
@@ -78,10 +82,15 @@ func push_snapshot(snapshot: Dictionary) -> bool:
 
 	_last_tick = tick
 	latest_stations = parsed.stations.duplicate()
+	var has_items := snapshot.has("items") and snapshot["items"] is Dictionary
+	if has_items:
+		latest_items = _clone_items_dict(parsed.items)
+		_has_latest_items = true
 	_buffer.append({
 		"tick": tick,
 		"time": sim_time,
 		"state": parsed,
+		"has_items": has_items,
 	})
 	while _buffer.size() > MAX_BUFFER_SIZE:
 		_buffer.pop_front()
@@ -96,11 +105,11 @@ func sample_at(target_state: GameState, sample_time: float, use_latest_stations:
 
 	var last_idx := _buffer.size() - 1
 	if _buffer.size() == 1 or sample_time <= float(_buffer[0]["time"]):
-		_copy_state_into(target_state, _buffer[0]["state"], use_latest_stations)
+		_copy_state_into(target_state, _buffer[0]["state"], use_latest_stations, bool(_buffer[0].get("has_items", false)))
 		return true
 
 	if sample_time >= float(_buffer[last_idx]["time"]):
-		_copy_state_into(target_state, _buffer[last_idx]["state"], use_latest_stations)
+		_copy_state_into(target_state, _buffer[last_idx]["state"], use_latest_stations, bool(_buffer[last_idx].get("has_items", false)))
 		return true
 
 	var entry_a: Dictionary = _buffer[0]
@@ -120,7 +129,7 @@ func sample_at(target_state: GameState, sample_time: float, use_latest_stations:
 
 	var state_a: GameState = entry_a["state"]
 	var state_b: GameState = entry_b["state"]
-	_interpolate_states(target_state, state_a, state_b, t, use_latest_stations)
+	_interpolate_states(target_state, state_a, state_b, t, use_latest_stations, bool(entry_b.get("has_items", false)))
 	return true
 
 
@@ -146,14 +155,18 @@ func step(target_state: GameState, delta: float = FIXED_DELTA) -> bool:
 	return sample_at(target_state, render_time, true)
 
 
-func _copy_state_into(target_state: GameState, src: GameState, use_latest_stations: bool) -> void:
+func _copy_state_into(target_state: GameState, src: GameState, use_latest_stations: bool, src_has_items: bool = false) -> void:
 	target_state.tick = src.tick
 	_copy_boat_state(target_state.boat, src.boat)
 	_sync_players_from_single(target_state, src)
 	target_state.stations = latest_stations.duplicate() if use_latest_stations else src.stations.duplicate()
+	if use_latest_stations and _has_latest_items:
+		_sync_items_into(target_state, latest_items)
+	elif not use_latest_stations and src_has_items:
+		_sync_items_into(target_state, src.items)
 
 
-func _interpolate_states(target_state: GameState, state_a: GameState, state_b: GameState, t: float, use_latest_stations: bool) -> void:
+func _interpolate_states(target_state: GameState, state_a: GameState, state_b: GameState, t: float, use_latest_stations: bool, b_has_items: bool = false) -> void:
 	target_state.tick = state_b.tick
 
 	var boat_a := state_a.boat
@@ -184,6 +197,39 @@ func _interpolate_states(target_state: GameState, state_a: GameState, state_b: G
 			out_p.local_position = pb.local_position
 
 	target_state.stations = latest_stations.duplicate() if use_latest_stations else state_b.stations.duplicate()
+	if use_latest_stations and _has_latest_items:
+		_sync_items_into(target_state, latest_items)
+	elif not use_latest_stations and b_has_items:
+		_sync_items_into(target_state, state_b.items)
+
+
+func _clone_items_dict(source_items: Dictionary) -> Dictionary:
+	var cloned: Dictionary = {}
+	for iid in source_items:
+		var item: HeldItem = source_items[iid]
+		if item != null:
+			cloned[str(iid)] = item.clone()
+	return cloned
+
+
+func _sync_items_into(target_state: GameState, source_items: Dictionary) -> void:
+	for existing_id in target_state.items.keys():
+		if not source_items.has(existing_id):
+			target_state.items.erase(existing_id)
+	for iid in source_items:
+		var src_item: HeldItem = source_items[iid]
+		if src_item == null:
+			continue
+		if target_state.items.has(iid) and target_state.items[iid] is HeldItem:
+			var dst: HeldItem = target_state.items[iid]
+			dst.id = src_item.id
+			dst.item_type = src_item.item_type
+			dst.color_index = src_item.color_index
+			dst.carrier_peer_id = src_item.carrier_peer_id
+			dst.holder_id = src_item.holder_id
+			dst.last_holder_id = src_item.last_holder_id
+		else:
+			target_state.items[str(iid)] = src_item.clone()
 
 
 func _copy_boat_state(dst: BoatState, src: BoatState) -> void:

@@ -19,6 +19,7 @@ var address: String = DEFAULT_ADDRESS
 var port: int = DEFAULT_PORT
 var sync_rate_hz: int = DEFAULT_SYNC_HZ
 var bot_count: int = 0
+var rod_count: int = ItemConfig.DEFAULT_ROD_COUNT
 var max_clients: int = 4
 var sim_latency_ms: int = 0
 var sim_jitter_ms: int = 0
@@ -46,6 +47,7 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 	var parsed_port: int = DEFAULT_PORT
 	var parsed_sync_hz: int = DEFAULT_SYNC_HZ
 	var parsed_bots: int = 0
+	var parsed_rods: int = ItemConfig.DEFAULT_ROD_COUNT
 	var parsed_latency_ms: int = 0
 	var parsed_jitter_ms: int = 0
 
@@ -72,6 +74,10 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 				if i + 1 < args.size() and args[i + 1].is_valid_int():
 					parsed_bots = clampi(int(args[i + 1]), 0, CrewSimulator.MAX_BOTS)
 					i += 1
+			"--rods":
+				if i + 1 < args.size() and args[i + 1].is_valid_int():
+					parsed_rods = maxi(0, int(args[i + 1]))
+					i += 1
 			"--latency":
 				if i + 1 < args.size() and args[i + 1].is_valid_int():
 					parsed_latency_ms = clampi(int(args[i + 1]), 0, MAX_SIM_LATENCY_MS)
@@ -88,6 +94,7 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 		"port": parsed_port,
 		"sync_hz": parsed_sync_hz,
 		"bots": parsed_bots,
+		"rods": parsed_rods,
 		"latency_ms": parsed_latency_ms,
 		"jitter_ms": parsed_jitter_ms,
 	}
@@ -119,6 +126,7 @@ func configure_from_args(args: PackedStringArray, base_env: EnvConfig = null) ->
 		port = int(cfg.get("port", DEFAULT_PORT))
 		set_sync_rate_hz(int(cfg.get("sync_hz", DEFAULT_SYNC_HZ)))
 		set_bot_count(int(cfg.get("bots", 0)))
+		rod_count = int(cfg.get("rods", ItemConfig.DEFAULT_ROD_COUNT))
 		set_sim_latency(int(cfg.get("latency_ms", 0)), int(cfg.get("jitter_ms", 0)))
 		_net_state = "offline"
 		return
@@ -140,6 +148,7 @@ func configure_from_args(args: PackedStringArray, base_env: EnvConfig = null) ->
 		set_sync_rate_hz(int(cfg.get("sync_hz", sync_rate_hz)))
 	if args.has("--bots"):
 		set_bot_count(int(cfg.get("bots", 0)))
+	rod_count = int(cfg.get("rods", ItemConfig.DEFAULT_ROD_COUNT)) if args.has("--rods") else ItemConfig.DEFAULT_ROD_COUNT
 	if _is_prod_env():
 		sim_latency_ms = 0
 		sim_jitter_ms = 0
@@ -338,7 +347,14 @@ func step_network_tick(boat_state: BoatState, local_input: PlayerInput, simulato
 	return {}
 
 
-func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: BoatSimulator, crew_sim: CrewSimulator, station_sim: StationSimulator = null) -> Dictionary:
+func step_game_tick(
+	game_state: GameState,
+	local_input: PlayerInput,
+	boat_sim: BoatSimulator,
+	crew_sim: CrewSimulator,
+	station_sim: StationSimulator = null,
+	item_sim: ItemSimulator = null
+) -> Dictionary:
 	if is_authority():
 		for disconnected_id in _disconnected_peers:
 			game_state.remove_player(disconnected_id)
@@ -351,12 +367,20 @@ func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: B
 			game_state.ensure_player(pid, false)
 			crew_inputs[pid] = _client_inputs[peer_id]
 
+		var was_at_station: Dictionary = {}
+		for pid in crew_inputs:
+			was_at_station[pid] = game_state.is_player_at_station(int(pid))
+
 		crew_sim.sync_bots(game_state, bot_count)
 		if station_sim != null:
 			station_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA)
+			if item_sim != null:
+				item_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA, was_at_station)
 			station_sim.apply_helm_input_to_boat(game_state, crew_inputs, BoatSimulator.FIXED_DELTA, boat_sim.config.max_steering_angle)
 			boat_sim.step(game_state.boat, station_sim.get_active_boat_input(game_state, boat_sim.config.max_steering_angle), BoatSimulator.FIXED_DELTA)
 		else:
+			if item_sim != null:
+				item_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA, was_at_station)
 			var combined := get_combined_input(local_input)
 			boat_sim.step(game_state.boat, combined, BoatSimulator.FIXED_DELTA)
 		crew_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA)
