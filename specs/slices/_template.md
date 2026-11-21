@@ -45,4 +45,4 @@ Tiedosto: `tests/test_NN_<slug>.gd` (enintään 5 testiä).
 | :--- | :--- | :--- |
 | `<polku>` | `[NEW]` / `[MODIFY]` | `<vastuu>` |
 
-<!-- Raja: ≤ 50 riviä. Jos ylittyy → pilko viipale (00-architecture.md §5). -->
+<!-- Raja: ≤ 60 ei-tyhjää riviä. Jos ylittyy → pilko viipale (00-architecture.md §5). -->

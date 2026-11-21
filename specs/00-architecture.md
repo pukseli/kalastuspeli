@@ -7,14 +7,14 @@
 | Taso | Tiedostot | Sääntö |
 | :--- | :--- | :--- |
 | **Perustuslaki & Elävä Skeema** | `00-vision.md`, `00-environment.md`, `00-architecture.md`, `01-state-schema.md`, `02-roadmap.md` | Pysyvä perusta + tietoskeema, joka kasvaa **vain viipale kerrallaan** (ei tulevaisuuden ominaisuuksien etukäteisspeksausta / YAGNI). |
-| **Atomiset Viipalespeksit** | `specs/slices/XX-<nimi>.md` (pohja: `specs/slices/_template.md`, roadmap: `specs/02-roadmap.md`, 30–50 riviä / viipale) | 3 osaa: *State Delta*, *Rules & Math* ja *Headless Acceptance Test*. Putki: `Mikrospeksi -> Headless-testi -> Koodi -> Verifiointi` valmiiksi ennen seuraavaa viipaletta. |
+| **Atomiset Viipalespeksit** | `specs/slices/XX-<nimi>.md` (pohja: `specs/slices/_template.md`, roadmap: `specs/02-roadmap.md`, ≤ 60 ei-tyhjää riviä / viipale) | 7 osaa, ks. _template.md. Putki: `Mikrospeksi -> Headless-testi -> Koodi -> Verifiointi` valmiiksi ennen seuraavaa viipaletta. |
 
 ### Token-optimoitu Monimallityönkulku (Multi-Model Token Efficiency)
 
 | Rooli | Malli / Agentti | Vastuu |
 | :--- | :--- | :--- |
 | **Arkkitehti** | Pääagentti (kalliimpi malli) | Suunnittelee rajapinnat, kirjoittaa *Zero-Exploration*-tehtäväkortit (valmiit polut, luokat, tyypit ilman etsintää) ja tarkistaa testitulokset. |
-| **Rakentaja** | `flash`-alagentti | Tuottaa 85–90 % output-tokeneista (`.md`, `.gd`, yksikkötestit), ajaa itse `godot --headless` -testin ja korjaa virheet ennen palautusta. |
+| **Rakentaja** | `flash`-alagentti | Tuottaa 85–90 % output-tokeneista (`.md`, `.gd`, yksikkötestit), ajaa `bash tests/run.sh`, ei muokkaa hyväksymistestejä (§4), ja korjaa virheet ennen palautusta. |
 | **Apuri** | `flash_lite`-alagentti | Mekaaniset rutiinitehtävät. |
 | **Token-Dense Specs** | Kaikki speksit | Kirjoitetaan tiiviinä taulukoina ja tyyppimäärittelyinä pitkän proosan sijaan. |
 
@@ -76,7 +76,7 @@ bash tests/run.sh
 | 1 | Yksi demottava tulos: `"Nyt voin ___"` |
 | 2 | Yksi uusi arkkitehtuurikäsite |
 | 3 | Enintään 5 hyväksymistestiä |
-| 4 | Speksi enintään 50 riviä |
+| 4 | Speksi ≤ 60 ei-tyhjää riviä |
 
 **Jos jokin raja ylittyy → viipale pilkotaan.**
 
