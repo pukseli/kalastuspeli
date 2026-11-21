@@ -35,14 +35,14 @@ Ks. `specs/01-state-schema.md`.
   - Vain ruorissa olevan pelaajan syötteet säätävät veneen kaasua ja kääntökulmaa (`BoatSimulator.step`).
   - **Säilyvä tila:** Kaasu ja kääntökulma säilyvät nykyisessä asennossaan näppäimen vapauduttua ja ruorista poistuttaessa. Vene jatkaa matkaa nykyisellä tilallaan.
 - **Kamera & View:**
-  - Kun paikallinen pelaaja on ruorissa, kamera siirtyy ohjaamonäkymään (`Vector3(0.0, 1.25, -0.5)`, pitch `-10°`). Muulloin kansinäkymä (`(0, 7, 12)`, `-28°`).
+  - Kun paikallinen pelaaja on ruorissa, kamera siirtyy ohjaamonäkymään (`Vector3(0.0, 2.0, 1.2)`, pitch `-15°`). Muulloin kansinäkymä (`(0, 7, 12)`, `-28°`).
   - 3D-kannella näkyy ohjauspulpetti. HUD näyttää tilannekohtaisen kehotteen `[E] Tartu ruoriin` tai `[E] Irrota ote`.
 
 | Parametri | Arvo | Yksikkö |
 | :--- | :--- | :--- |
 | `HELM_LOCAL_POS` | `(0.0, 0.25, -0.6)` | Vector3 |
 | `HELM_INTERACTION_RADIUS` | `1.0` | m |
-| `HELM_CAM_OFFSET` / `HELM_CAM_PITCH_DEG` | `(0.0, 1.25, -0.5)` / `-10.0` | m / deg |
+| `HELM_CAM_OFFSET` / `HELM_CAM_PITCH_DEG` | `(0.0, 2.0, 1.2)` / `-15.0` | m / deg |
 
 ## 4. Headless Acceptance Test
 

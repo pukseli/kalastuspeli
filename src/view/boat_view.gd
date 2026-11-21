@@ -33,18 +33,19 @@ func _init() -> void:
 	# Steering Console (Helm) in front of helm position
 	var console_mat := StandardMaterial3D.new()
 	console_mat.albedo_color = Color(0.3, 0.32, 0.35)
-	add_child(_make_box(Vector3(0.8, 0.6, 0.4), Vector3(0.0, 0.55, -0.95), console_mat))
+	add_child(_make_box(Vector3(0.8, 0.5, 0.35), Vector3(0.0, 0.45, -0.95), console_mat))
 
 	# Steering wheel / dash
 	var wheel_mat := StandardMaterial3D.new()
 	wheel_mat.albedo_color = Color(0.15, 0.15, 0.15)
-	add_child(_make_box(Vector3(0.35, 0.35, 0.08), Vector3(0.0, 0.85, -0.78), wheel_mat))
+	add_child(_make_box(Vector3(0.3, 0.3, 0.06), Vector3(0.0, 0.72, -0.85), wheel_mat))
 
-	# Low windshield
+	# Low windshield with alpha transparency
 	var glass_mat := StandardMaterial3D.new()
-	glass_mat.albedo_color = Color(0.65, 0.85, 0.95, 0.8)
+	glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass_mat.albedo_color = Color(0.5, 0.8, 0.95, 0.3)
 	glass_mat.roughness = 0.1
-	add_child(_make_box(Vector3(0.75, 0.3, 0.05), Vector3(0.0, 1.0, -1.0), glass_mat))
+	add_child(_make_box(Vector3(0.78, 0.18, 0.03), Vector3(0.0, 0.75, -1.0), glass_mat))
 
 	players_container = Node3D.new()
 	players_container.name = "PlayersContainer"
