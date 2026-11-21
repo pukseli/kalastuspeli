@@ -1,6 +1,7 @@
 extends Node
 
 var game_state: GameState = GameState.new()
+var render_state: GameState = GameState.new()
 var player_input: PlayerInput = PlayerInput.new()
 var boat_simulator: BoatSimulator = BoatSimulator.new()
 var crew_simulator: CrewSimulator = CrewSimulator.new()
@@ -36,6 +37,12 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		elif event.physical_keycode == KEY_B or event.keycode == KEY_B:
 			if env_config.debug_hotkeys and env_config.allow_bots and network_manager.is_authority():
 				network_manager.cycle_bot_count()
+		elif event.physical_keycode == KEY_L or event.keycode == KEY_L:
+			if env_config.debug_hotkeys and not network_manager.is_authority():
+				network_manager.cycle_latency_preset()
+		elif event.physical_keycode == KEY_I or event.keycode == KEY_I:
+			if env_config.debug_hotkeys and not network_manager.is_authority():
+				network_manager.toggle_interpolation()
 		elif event.physical_keycode == KEY_E or event.keycode == KEY_E:
 			player_input.interact = true
 
@@ -44,11 +51,16 @@ func _physics_process(_delta: float) -> void:
 	_read_local_input()
 	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator)
 	player_input.interact = false
-	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id())
+	var display_state := game_state
+	if not network_manager.is_authority() and network_manager.interpolation_enabled:
+		if network_manager.interpolator.step(render_state, BoatSimulator.FIXED_DELTA):
+			display_state = render_state
+	world_view.apply_game_state(display_state, network_manager.get_status_text(), network_manager.get_local_peer_id())
 
 
 func _on_game_snapshot_received(snapshot: Dictionary) -> void:
 	network_manager.apply_game_snapshot(game_state, snapshot)
+	network_manager.interpolator.push_snapshot(snapshot)
 
 
 func _read_local_input() -> void:

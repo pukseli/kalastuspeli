@@ -58,7 +58,7 @@
 
 | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- |
-| `tick` | `int` | `0` | Simulaation tick-laskuri (valmis S5-interpolointiin) |
+| `tick` | `int` | `0` | Simulaation tick-laskuri (käytössä S5-snapshot-interpoloinnissa) |
 | `boat` | `BoatState` | `BoatState.new()` | Veneen maailmatila |
 | `players` | `Dictionary` | `{}` | `peer_id: int -> PlayerState` |
 | `stations` | `Dictionary` | `{"helm": 0}` | Asemat: `station_id: String -> occupant_peer_id: int` (lisätty S4) |

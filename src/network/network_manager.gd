@@ -3,12 +3,16 @@ extends Node
 
 signal snapshot_received(snapshot: Dictionary)
 signal game_snapshot_received(snapshot: Dictionary)
+signal client_outgoing_flushed(packet: Dictionary)
 
 const DEFAULT_PORT: int = 7777
 const DEFAULT_ADDRESS: String = "127.0.0.1"
 const DEFAULT_SYNC_HZ: int = 20
 const PHYSICS_HZ: int = 60
 const SYNC_RATE_PRESETS: Array[int] = [20, 30, 60, 5, 10]
+const LATENCY_PRESETS: Array = [[0, 0], [100, 15], [200, 30]]
+const MAX_SIM_LATENCY_MS: int = 1000
+const MAX_SIM_JITTER_MS: int = 250
 
 var mode: String = "offline"
 var address: String = DEFAULT_ADDRESS
@@ -16,6 +20,10 @@ var port: int = DEFAULT_PORT
 var sync_rate_hz: int = DEFAULT_SYNC_HZ
 var bot_count: int = 0
 var max_clients: int = 4
+var sim_latency_ms: int = 0
+var sim_jitter_ms: int = 0
+var interpolation_enabled: bool = true
+var interpolator: SnapshotInterpolator = SnapshotInterpolator.new()
 var env_config: EnvConfig = EnvConfig.new()
 var transport: NetworkTransport = NetworkTransport.new()
 
@@ -25,6 +33,11 @@ var _connected_peers: Dictionary = {}
 var _disconnected_peers: Array[int] = []
 var _combined_input: PlayerInput = PlayerInput.new()
 var _net_state: String = "offline"
+var _sim_clock_sec: float = 0.0
+var _jitter_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _outgoing_queue: Array[Dictionary] = []
+var _incoming_snapshot_queue: Array[Dictionary] = []
+var _packet_seq: int = 0
 
 
 static func parse_cli_args(args: PackedStringArray) -> Dictionary:
@@ -33,6 +46,8 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 	var parsed_port: int = DEFAULT_PORT
 	var parsed_sync_hz: int = DEFAULT_SYNC_HZ
 	var parsed_bots: int = 0
+	var parsed_latency_ms: int = 0
+	var parsed_jitter_ms: int = 0
 
 	var i := 0
 	while i < args.size():
@@ -57,6 +72,14 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 				if i + 1 < args.size() and args[i + 1].is_valid_int():
 					parsed_bots = clampi(int(args[i + 1]), 0, CrewSimulator.MAX_BOTS)
 					i += 1
+			"--latency":
+				if i + 1 < args.size() and args[i + 1].is_valid_int():
+					parsed_latency_ms = clampi(int(args[i + 1]), 0, MAX_SIM_LATENCY_MS)
+					i += 1
+			"--jitter":
+				if i + 1 < args.size() and args[i + 1].is_valid_int():
+					parsed_jitter_ms = clampi(int(args[i + 1]), 0, MAX_SIM_JITTER_MS)
+					i += 1
 		i += 1
 
 	return {
@@ -65,6 +88,8 @@ static func parse_cli_args(args: PackedStringArray) -> Dictionary:
 		"port": parsed_port,
 		"sync_hz": parsed_sync_hz,
 		"bots": parsed_bots,
+		"latency_ms": parsed_latency_ms,
+		"jitter_ms": parsed_jitter_ms,
 	}
 
 
@@ -79,9 +104,14 @@ func apply_env_config(cfg: EnvConfig) -> void:
 	transport.backend = cfg.transport
 	if not cfg.allow_bots:
 		bot_count = 0
+	if cfg.is_prod():
+		sim_latency_ms = 0
+		sim_jitter_ms = 0
+		interpolation_enabled = true
 
 
 func configure_from_args(args: PackedStringArray, base_env: EnvConfig = null) -> void:
+	_clear_client_sync_buffers()
 	if base_env == null:
 		var cfg := parse_cli_args(args)
 		mode = str(cfg.get("mode", "offline"))
@@ -89,6 +119,7 @@ func configure_from_args(args: PackedStringArray, base_env: EnvConfig = null) ->
 		port = int(cfg.get("port", DEFAULT_PORT))
 		set_sync_rate_hz(int(cfg.get("sync_hz", DEFAULT_SYNC_HZ)))
 		set_bot_count(int(cfg.get("bots", 0)))
+		set_sim_latency(int(cfg.get("latency_ms", 0)), int(cfg.get("jitter_ms", 0)))
 		_net_state = "offline"
 		return
 
@@ -109,6 +140,14 @@ func configure_from_args(args: PackedStringArray, base_env: EnvConfig = null) ->
 		set_sync_rate_hz(int(cfg.get("sync_hz", sync_rate_hz)))
 	if args.has("--bots"):
 		set_bot_count(int(cfg.get("bots", 0)))
+	if _is_prod_env():
+		sim_latency_ms = 0
+		sim_jitter_ms = 0
+		interpolation_enabled = true
+	else:
+		var target_latency := int(cfg.get("latency_ms", 0)) if args.has("--latency") else 0
+		var target_jitter := int(cfg.get("jitter_ms", 0)) if args.has("--jitter") else 0
+		set_sim_latency(target_latency, target_jitter)
 	_net_state = "offline"
 
 
@@ -176,6 +215,70 @@ func cycle_bot_count() -> int:
 		return 0
 	bot_count = (bot_count + 1) % (CrewSimulator.MAX_BOTS + 1)
 	return bot_count
+
+
+func set_sim_latency(rtt_ms: int, jitter_ms: int = -1) -> void:
+	if _is_prod_env():
+		sim_latency_ms = 0
+		sim_jitter_ms = 0
+		return
+	sim_latency_ms = clampi(rtt_ms, 0, MAX_SIM_LATENCY_MS)
+	if jitter_ms >= 0:
+		sim_jitter_ms = clampi(jitter_ms, 0, MAX_SIM_JITTER_MS)
+
+
+func cycle_latency_preset() -> Array:
+	if _is_prod_env():
+		sim_latency_ms = 0
+		sim_jitter_ms = 0
+		return [0, 0]
+	if env_config != null and not env_config.debug_hotkeys:
+		return [sim_latency_ms, sim_jitter_ms]
+	var current_idx := -1
+	for i in range(LATENCY_PRESETS.size()):
+		var preset: Array = LATENCY_PRESETS[i]
+		if int(preset[0]) == sim_latency_ms and int(preset[1]) == sim_jitter_ms:
+			current_idx = i
+			break
+	var next_idx := 0 if current_idx == -1 else (current_idx + 1) % LATENCY_PRESETS.size()
+	var next_preset: Array = LATENCY_PRESETS[next_idx]
+	set_sim_latency(int(next_preset[0]), int(next_preset[1]))
+	return [sim_latency_ms, sim_jitter_ms]
+
+
+func set_interpolation_enabled(enabled: bool) -> void:
+	if _is_prod_env():
+		interpolation_enabled = true
+		return
+	interpolation_enabled = enabled
+
+
+func toggle_interpolation() -> bool:
+	if _is_prod_env():
+		interpolation_enabled = true
+		return true
+	if env_config != null and not env_config.debug_hotkeys:
+		return interpolation_enabled
+	interpolation_enabled = not interpolation_enabled
+	return interpolation_enabled
+
+
+func set_jitter_seed(seed_value: int) -> void:
+	_jitter_rng.seed = seed_value
+
+
+func receive_incoming_game_snapshot(snapshot: Dictionary) -> void:
+	if is_authority() or snapshot.is_empty():
+		return
+	var delay := _compute_one_way_delay_sec()
+	if delay <= 0.0:
+		game_snapshot_received.emit(snapshot)
+		return
+	_incoming_snapshot_queue.append({
+		"deliver_at": _sim_clock_sec + delay,
+		"seq": _next_packet_seq(),
+		"snapshot": snapshot,
+	})
 
 
 func get_snapshot_interval_ticks() -> int:
@@ -271,12 +374,7 @@ func step_game_tick(game_state: GameState, local_input: PlayerInput, boat_sim: B
 			return snapshot
 		return {}
 
-	if _is_client_connected():
-		if local_input.interact:
-			rpc_submit_client_interact.rpc_id(1)
-		var payload := local_input.to_dict()
-		payload["interact"] = false
-		rpc_submit_client_input.rpc_id(1, payload)
+	_step_client_tick(local_input)
 	return {}
 
 
@@ -319,7 +417,20 @@ func get_status_text() -> String:
 		var state_tag := "CONNECTED" if connected else _net_state.to_upper()
 		if state_tag == "OFFLINE":
 			state_tag = "CONNECTING"
-		return "Net: CLIENT (%s %s:%d) | Peers: %d | Sync: %d Hz | Bots: %d" % [state_tag, address, port, peer_count, sync_rate_hz, bot_count]
+		var interp_label := "ON" if interpolation_enabled else "OFF"
+		var interp_ms := roundi(interpolator.current_delay * 1000.0)
+		return "Net: CLIENT (%s %s:%d) | Peers: %d | Sync: %d Hz | Bots: %d | Lat: %dms ±%dms | Interp: %s (%dms)" % [
+			state_tag,
+			address,
+			port,
+			peer_count,
+			sync_rate_hz,
+			bot_count,
+			sim_latency_ms,
+			sim_jitter_ms,
+			interp_label,
+			interp_ms,
+		]
 	return "Net: OFFLINE | Peers: 0 | Sync: %d Hz | Bots: %d" % [sync_rate_hz, bot_count]
 
 
@@ -361,9 +472,7 @@ func rpc_sync_boat_state(snapshot: Dictionary) -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func rpc_sync_game_state(snapshot: Dictionary) -> void:
-	if is_authority():
-		return
-	game_snapshot_received.emit(snapshot)
+	receive_incoming_game_snapshot(snapshot)
 
 
 func _on_peer_connected(peer_id: int) -> void:
@@ -388,6 +497,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
+	_clear_client_sync_buffers()
 	_net_state = "connected"
 	_log_net("[NET] Connected to server %s:%d (local peer_id=%d)" % [address, port, get_local_peer_id()])
 
@@ -398,6 +508,7 @@ func _on_connection_failed() -> void:
 
 
 func _on_server_disconnected() -> void:
+	_clear_client_sync_buffers()
 	_net_state = "disconnected"
 	_log_net("[NET] Disconnected from server %s:%d" % [address, port])
 
@@ -422,3 +533,107 @@ func _has_active_peer() -> bool:
 	if not is_inside_tree() or multiplayer == null or not multiplayer.has_multiplayer_peer():
 		return false
 	return _is_client_connected() or not _connected_peers.is_empty()
+
+
+func _is_prod_env() -> bool:
+	return env_config != null and env_config.is_prod()
+
+
+func _clear_client_sync_buffers() -> void:
+	_outgoing_queue.clear()
+	_incoming_snapshot_queue.clear()
+	_sim_clock_sec = 0.0
+	_packet_seq = 0
+	interpolator.clear()
+
+
+func _next_packet_seq() -> int:
+	_packet_seq += 1
+	return _packet_seq
+
+
+func _compute_one_way_delay_sec() -> float:
+	if _is_prod_env() or (sim_latency_ms <= 0 and sim_jitter_ms <= 0):
+		return 0.0
+	var jitter := _jitter_rng.randf_range(-float(sim_jitter_ms), float(sim_jitter_ms)) if sim_jitter_ms > 0 else 0.0
+	return maxf(0.0, (float(sim_latency_ms) * 0.5 + jitter) / 1000.0)
+
+
+func _step_client_tick(local_input: PlayerInput) -> void:
+	var delay := _compute_one_way_delay_sec()
+	if delay <= 0.0:
+		for item in _pop_due_items(_outgoing_queue):
+			_dispatch_outgoing_item(item)
+		if local_input.interact:
+			_dispatch_outgoing_item({
+				"kind": "interact",
+				"deliver_at": _sim_clock_sec,
+				"seq": _next_packet_seq(),
+			})
+		var immediate_payload := local_input.to_dict()
+		immediate_payload["interact"] = false
+		_dispatch_outgoing_item({
+			"kind": "input",
+			"payload": immediate_payload,
+			"deliver_at": _sim_clock_sec,
+			"seq": _next_packet_seq(),
+		})
+	else:
+		if local_input.interact:
+			_outgoing_queue.append({
+				"kind": "interact",
+				"deliver_at": _sim_clock_sec + delay,
+				"seq": _next_packet_seq(),
+			})
+		var payload := local_input.to_dict()
+		payload["interact"] = false
+		_outgoing_queue.append({
+			"kind": "input",
+			"payload": payload,
+			"deliver_at": _sim_clock_sec + delay,
+			"seq": _next_packet_seq(),
+		})
+		for item in _pop_due_items(_outgoing_queue):
+			_dispatch_outgoing_item(item)
+
+	for snap_item in _pop_due_items(_incoming_snapshot_queue):
+		var snap: Variant = snap_item.get("snapshot", {})
+		if snap is Dictionary and not snap.is_empty():
+			game_snapshot_received.emit(snap)
+
+	_sim_clock_sec += BoatSimulator.FIXED_DELTA
+
+
+func _pop_due_items(queue: Array[Dictionary]) -> Array[Dictionary]:
+	var ready: Array[Dictionary] = []
+	var remaining: Array[Dictionary] = []
+	var cutoff := _sim_clock_sec + 0.0001
+	for item in queue:
+		if float(item.get("deliver_at", 0.0)) <= cutoff:
+			ready.append(item)
+		else:
+			remaining.append(item)
+	queue.clear()
+	queue.append_array(remaining)
+	if ready.size() > 1:
+		ready.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var da := float(a.get("deliver_at", 0.0))
+			var db := float(b.get("deliver_at", 0.0))
+			if is_equal_approx(da, db):
+				return int(a.get("seq", 0)) < int(b.get("seq", 0))
+			return da < db
+		)
+	return ready
+
+
+func _dispatch_outgoing_item(item: Dictionary) -> void:
+	client_outgoing_flushed.emit(item)
+	if not _is_client_connected():
+		return
+	var kind := str(item.get("kind", ""))
+	if kind == "interact":
+		rpc_submit_client_interact.rpc_id(1)
+	elif kind == "input":
+		var payload: Variant = item.get("payload", {})
+		if payload is Dictionary:
+			rpc_submit_client_input.rpc_id(1, payload)
