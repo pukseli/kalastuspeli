@@ -37,6 +37,7 @@
 | `steering` | `float` | `0.0` | Ohjaussyöte (`-1.0 .. 1.0`, `+1.0` vasen, `-1.0` oikea) |
 | `move_x` | `float` | `0.0` | Kansikävelysyöte X-akselilla (`-1.0 .. 1.0`: `A = -1.0`, `D = +1.0`, lisätty S3) |
 | `move_z` | `float` | `0.0` | Kansikävelysyöte Z-akselilla (`-1.0 .. 1.0`: `W = -1.0` keulaan, `S = +1.0` perään, lisätty S3) |
+| `interact` | `bool` | `false` | Aseman varaus/vapautus (`E`-näppäin, lisätty S4) |
 
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
@@ -60,6 +61,7 @@
 | `tick` | `int` | `0` | Simulaation tick-laskuri (valmis S6-interpolointiin) |
 | `boat` | `BoatState` | `BoatState.new()` | Veneen maailmatila |
 | `players` | `Dictionary` | `{}` | `peer_id: int -> PlayerState` |
+| `stations` | `Dictionary` | `{"helm": 0}` | Asemat: `station_id: String -> occupant_peer_id: int` (lisätty S4) |
 
 **Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`

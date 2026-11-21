@@ -8,7 +8,7 @@
 | S1 | `01-boat-on-water` | ajaa venettä järvellä yhdessä ikkunassa | Core + 3D-näkymän runko | `done` |
 | S2 | `02-two-windows-one-boat` | nähdä saman veneen kahdessa ikkunassa (`--host` / `--join` / `--port` / `--sync-hz`, `T`-tickrate) | Verkkosynkka (vain `BoatState`) | `done` |
 | S3 | `03-crew-on-deck` | kävellä 3D-hahmolla kannella matalammasta kamerakulmasta (`-28°`), nähdä toiset ikkunat ja säätää testipelaajia (`B` / `--bots`) | Paikallinen kansikoordinaatisto verkon yli | `done` |
-| S4 | `04-stations` | kävellä toimintopaikan äärelle, varata/vapauttaa sen (`E`) ja ohjata venettä vain `"helm"`-asemalta | Yleinen `Station`-järjestelmä (`station_id`, `occupant_peer_id`, 1 pelaaja / paikka) | `draft` |
+| S4 | `04-stations` | kävellä ohjaamon äärelle, tarttua ruoriin (`E`), kokea ohjaamonäkymä ja säätää kaasua/kääntöä jotka säilyvät myös poistuttaessa | Toimintopaikat ja ruoriohjaus (`StationConfig`, `GameState.stations`, ohjaamonäkymä) | `done` |
 | S5 | `05-helm-controls` | säätää ruorissa vauhtisauvaa ja ohjauspyörää, jotka jäävät asentoonsa myös ruorista poistuessa | Tilallinen veneenohjaus (`throttle_lever`, `wheel_angle`, `0.0`-keskinapsahdus, osoitin) | `draft` |
 | S6 | `06-smooth-sync` | pelata ilman nykimistä 100 ms viiveellä | Interpolointi (vene + miehistö) + viivesimulaatio | `draft` |
 | S7 | `07-lobby-ui` | hostata ja liittyä ilman komentoriviä (näyttää paikalliset IP:t) | UI | `draft` |

@@ -5,6 +5,7 @@ var throttle: float = 0.0
 var steering: float = 0.0
 var move_x: float = 0.0
 var move_z: float = 0.0
+var interact: bool = false
 
 
 func to_dict() -> Dictionary:
@@ -13,6 +14,7 @@ func to_dict() -> Dictionary:
 		"steering": steering,
 		"move_x": move_x,
 		"move_z": move_z,
+		"interact": interact,
 	}
 
 
@@ -21,3 +23,4 @@ func from_dict(data: Dictionary) -> void:
 	steering = float(data.get("steering", 0.0))
 	move_x = float(data.get("move_x", 0.0))
 	move_z = float(data.get("move_z", 0.0))
+	interact = bool(data.get("interact", false))

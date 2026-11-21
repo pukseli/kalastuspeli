@@ -4,53 +4,73 @@ extends RefCounted
 var tick: int = 0
 var boat: BoatState = BoatState.new()
 var players: Dictionary = {}
+var stations: Dictionary = {
+	"helm": 0,
+}
+
+
+func is_player_at_station(peer_id: int) -> bool:
+	for sid in stations:
+		if int(stations[sid]) == peer_id:
+			return true
+	return false
+
+
+func get_player_station(peer_id: int) -> String:
+	for sid in stations:
+		if int(stations[sid]) == peer_id:
+			return str(sid)
+	return ""
 
 
 func ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState:
-	if players.has(peer_id):
-		return players[peer_id] as PlayerState
-	var player := PlayerState.new()
-	player.peer_id = peer_id
-	player.is_bot = is_bot
-	player.color_index = absi(peer_id) % 4 if is_bot else posmod(peer_id - 1, 4)
-	players[peer_id] = player
-	return player
+	if not players.has(peer_id):
+		var p := PlayerState.new()
+		p.peer_id = peer_id
+		p.is_bot = is_bot
+		p.color_index = absi(peer_id) % 4
+		players[peer_id] = p
+	return players[peer_id]
 
 
 func remove_player(peer_id: int) -> void:
 	players.erase(peer_id)
+	for sid in stations.keys():
+		if int(stations[sid]) == peer_id:
+			stations[sid] = 0
 
 
 func to_dict() -> Dictionary:
-	var serialized_players: Dictionary = {}
-	for peer_id in players:
-		var player: PlayerState = players[peer_id]
-		serialized_players[int(peer_id)] = player.to_dict()
+	var players_dict := {}
+	for pid in players:
+		var p: PlayerState = players[pid]
+		players_dict[str(pid)] = p.to_dict()
 	return {
 		"tick": tick,
 		"boat": boat.to_dict(),
-		"players": serialized_players,
+		"players": players_dict,
+		"stations": stations.duplicate(),
 	}
 
 
 func from_dict(data: Dictionary) -> void:
 	tick = int(data.get("tick", 0))
-	var boat_data: Variant = data.get("boat", {})
-	if boat_data is Dictionary:
-		boat.from_dict(boat_data)
+	if data.has("boat") and data["boat"] is Dictionary:
+		boat.from_dict(data["boat"])
 
-	var raw_players: Variant = data.get("players", {})
-	var incoming_ids: Dictionary = {}
-	if raw_players is Dictionary:
-		for raw_key in raw_players:
-			var pid := int(raw_key)
-			var p_data: Variant = raw_players[raw_key]
-			if p_data is Dictionary:
-				incoming_ids[pid] = true
-				var player := ensure_player(pid, bool(p_data.get("is_bot", false)))
-				player.from_dict(p_data)
-				player.peer_id = pid
+	var raw_players: Dictionary = data.get("players", {})
+	var current_pids: Array = players.keys()
+	for pid in current_pids:
+		if not raw_players.has(str(pid)) and not raw_players.has(pid):
+			players.erase(pid)
 
-	for existing_key in players.keys():
-		if not incoming_ids.has(existing_key):
-			players.erase(existing_key)
+	for raw_id in raw_players:
+		var pid := int(raw_id)
+		var p_dict: Dictionary = raw_players[raw_id]
+		var player := ensure_player(pid, bool(p_dict.get("is_bot", false)))
+		player.from_dict(p_dict)
+
+	if data.has("stations") and data["stations"] is Dictionary:
+		var raw_stations: Dictionary = data["stations"]
+		for sid in raw_stations:
+			stations[str(sid)] = int(raw_stations[sid])

@@ -41,7 +41,9 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA) -> v
 
 	for pid in ids:
 		var player: PlayerState = state.players[pid]
-		if not player.is_bot and inputs.has(pid):
+		if state.is_player_at_station(pid):
+			player.local_position = StationConfig.HELM_LOCAL_POS
+		elif not player.is_bot and inputs.has(pid):
 			var move := _extract_move_vector(inputs[pid])
 			if move.length() > 1.0:
 				move = move.normalized()
@@ -52,9 +54,15 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA) -> v
 	var min_dist := PLAYER_RADIUS * 2.0
 	var min_dist_sq := min_dist * min_dist
 	for i in range(ids.size()):
-		var pa: PlayerState = state.players[ids[i]]
+		var pid_a := ids[i]
+		var pa: PlayerState = state.players[pid_a]
+		var pa_locked := state.is_player_at_station(pid_a)
+
 		for j in range(i + 1, ids.size()):
-			var pb: PlayerState = state.players[ids[j]]
+			var pid_b := ids[j]
+			var pb: PlayerState = state.players[pid_b]
+			var pb_locked := state.is_player_at_station(pid_b)
+
 			var dx := pb.local_position.x - pa.local_position.x
 			var dz := pb.local_position.z - pa.local_position.z
 			var dist_sq := dx * dx + dz * dz
@@ -65,14 +73,26 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA) -> v
 				if dist > 0.0001:
 					dir_x = dx / dist
 					dir_z = dz / dist
-				var push := (min_dist - dist) * 0.5
-				pa.local_position.x -= dir_x * push
-				pa.local_position.z -= dir_z * push
-				pb.local_position.x += dir_x * push
-				pb.local_position.z += dir_z * push
+				var overlap := min_dist - dist
+
+				if pa_locked and not pb_locked:
+					pb.local_position.x += dir_x * overlap
+					pb.local_position.z += dir_z * overlap
+				elif pb_locked and not pa_locked:
+					pa.local_position.x -= dir_x * overlap
+					pa.local_position.z -= dir_z * overlap
+				elif not pa_locked and not pb_locked:
+					var push := overlap * 0.5
+					pa.local_position.x -= dir_x * push
+					pa.local_position.z -= dir_z * push
+					pb.local_position.x += dir_x * push
+					pb.local_position.z += dir_z * push
 
 	for pid in ids:
-		_clamp_to_deck(state.players[pid] as PlayerState)
+		var p: PlayerState = state.players[pid]
+		if state.is_player_at_station(pid):
+			p.local_position = StationConfig.HELM_LOCAL_POS
+		_clamp_to_deck(p)
 
 
 func _extract_move_vector(raw_input: Variant) -> Vector2:
