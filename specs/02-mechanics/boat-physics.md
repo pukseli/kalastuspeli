@@ -124,4 +124,4 @@ Fysiikkasimulaatio `src/core/` pidetään puhtaasti 2D-tasona (`y = 0`). Visuaal
 - **S1 (`01-boat-on-water`):** Korvataan aiempi suoraviivainen pisteohjaus perämoottorifysiikalla.
 - **S2 (`02-two-windows-one-boat`):** Verkkoreplikointi synkronoi laajennetun `BoatState`-tilan (sisältää `velocity`, `angular_velocity`, `throttle`, `steering_angle`).
 - **S3 (`03-crew-on-deck`):** Pelaajat liikkuvat ja pysyvät kannella kääntöpisteen ympärillä.
-- **S20 (`20-helm-visuals`):** Tuleva vauhtisauva (`throttle_lever`) ja ohjauspyörä (`wheel_angle`) kytkeytyvät suoraan tämän speksin `throttle`- ja `steering_angle`-arvoihin.
+- **S21 (`21-helm-visuals`):** Tuleva vauhtisauva (`throttle_lever`) ja ohjauspyörä (`wheel_angle`) kytkeytyvät suoraan tämän speksin `throttle`- ja `steering_angle`-arvoihin.

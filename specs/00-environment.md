@@ -67,4 +67,4 @@ Peli erottelee kehitys-/testiympäristön (`test`) ja julkaisu-/tuotantoympäris
 
 | Asia | Tila / Suunnitelma |
 | :--- | :--- |
-| **Export ja jakelu pöytäkoneelle** | Windows-export presetit + export templatet 4.3 → roadmap `S17` (`17-export`) |
+| **Export ja jakelu pöytäkoneelle** | Windows-export presetit + export templatet 4.3 → roadmap `S18` (`18-export`) |

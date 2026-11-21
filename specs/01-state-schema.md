@@ -75,7 +75,7 @@
 | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- |
 | `id` | `String` | `""` | Esineen yksilöllinen tunniste (esim. `"rod_1"`) |
-| `item_type` | `String` | `"rod"` | Esineen tyyppi (`"rod"`, laajennettavissa S9:ssä `"net"` jne.) |
+| `item_type` | `String` | `"rod"` | Esineen tyyppi (`"rod"`, laajennettavissa S10:ssä `"net"` jne.) |
 | `color_index` | `int` | `0` | Korostusväri-indeksi (`0 .. 5`) |
 | `carrier_peer_id` | `int` | `0` | Kantavan pelaajan `peer_id` (`0` = telineessä) |
 | `holder_id` | `String` | `""` | Nykyisen telineen tunniste (`""` = kädessä) |
