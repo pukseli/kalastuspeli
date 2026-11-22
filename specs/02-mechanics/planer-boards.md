@@ -68,8 +68,8 @@ Pelissä käytetään **pikkuplaanaria** eli siimaan vavan ja vieheen väliin ki
 | `sharp_turn_omega` | `0.35` | rad/s | Jyrkän käännöksen kulmanopeuskynnys kylkikosketussotkulle |
 | `board_collision_radius` | `0.45` | m | Plaanarin törmäyssäde esteisiin |
 | `lure_collision_radius` | `0.25` | m | Vieheen törmäyssäde esteisiin |
-| `detach_distance` | `2.0` | m | Etäisyys vavan kärjestä, jolla plaanarin voi irrottaa siimasta |
-| `detach_duration` | `0.5` | s | Lyhyt interaktio kelaajan tai tiimikaverin toimesta plaanarin irrotukseen |
+| `detach_distance` | `2.0` | m | Etäisyys vavan kärjestä, jolla plaanari lukittuu irrotettavaksi veneen laidalle |
+| `detach_duration` | `0.8` | s | Jatkuva `E`-pito (`interact_held`) telineellä tai kaverin toimesta plaanarin irrotukseen |
 | `quiet_water_offset` | `4.0` | m | Sivuetäisyys, jolla viehe on pois potkurimelusta |
 | `quiet_water_bite_bonus` | `1.2` | 1 | Tärppitodennäköisyyden kerroin (`+20 %`) hiljaisessa vedessä |
 | `snag_tension_rate` | `0.45` | /s | Kireyden kasvunopeus (`S11`) veneen vetäessä karikkoa vastaan |
@@ -149,7 +149,7 @@ Esteet esitetään kevyellä 2D-ympyrärajapinnalla `{position: Vector2, radius:
 
 3. **Jatkuva taistelusykli vs. `SNAGGED`:** Elävän kalan reaktiot moduloidaan jatkuvasti syöksy- ja lepovaiheiden (`surge_timer` + `fight_phase`) funktiona (`lepo ↔ syöksy`), jolloin `pull_back_offset`, `submersion`, `flag_angle`, `shake_intensity` ja `inward_drift_force` elävät ajassa. Staattisessa `SNAGGED`-tilassa arvot pysyvät nollana ja muuttumattomina (`flag_angle = -30°`).
 4. **Kaaos & sotkuriski (`LARGE` / `MONSTER`):** Jos `LARGE`- tai `MONSTER`-kala jää hoitamatta telineeseen ja sen `inward_drift_force >= drift_tangle_min_force` (`1.0 m/s`), se vetää plaanaria voimakkaasti kohti keskilinjaa ja voi laukaista `TANGLED`-sotkun kohdatessaan sisemmän plaanarin (`board_tangle_distance` tai risteävä siima). Vavan poiminta käteen tai kalan väsyminen loppuun (`stamina <= 0.05`) pysäyttää sotkevan vedon.
-5. **Kelaus ja irrotus:** Pelaaja kelaa siimaa sisään (`Space`). `S9a`:ssa plaanari ohittuu automaattisesti etäisyydellä `2.0 m` (`detach_distance`); `S9b`/`S10` tuo manuaalisen `E`-irrotuksen (`detach_duration = 0.5 s`).
+5. **Kelaus ja irrotus:** Pelaaja kelaa siimaa sisään (`Space`). Plaanari lukittuu laidalle etäisyydellä `2.0 m` (`detach_distance`). `S9b`:ssä pelaaja laskee vavan telineeseen (`E`) ja pitää `E`-näppäintä pohjassa (`detach_duration = 0.8 s`) yksin, tai tyhjäkäsinen tiimikaveri pitää `E` pohjassa kelaajan vieressä (`1.6 m`), jolloin `attached = false` ja siima pitenee `leader_length`-tapsin (`+6.0 m`).
 
 ### 3.6 E. Vaikutus kalastustehokkuuteen
 
@@ -196,8 +196,9 @@ Koska projektin arkkitehtuuri ([`specs/00-architecture.md`](../00-architecture.m
 | Viipale | Mitä otetaan käyttöön tästä speksistä |
 | :--- | :--- |
 | **S8 (`08-trolling-lines`)** | `RodState` + `PlanerBoard`-perusrakenne (`line_out`, `side`, `attached`, `lateral_offset`, `STOWED`/`DEPLOYING`/`TROLLING`), 2D-levitys vauhdista, valuminen pysähdyksissä, harmaalaatikkoinen plaanari + `ImmediateMesh`-siima ja viehe perässä. *(Tai vaihtoehtoisesti S8a/S8b-jako, jos halutaan erottaa suora siima ja plaanari.)* |
-| **S9 (`09-bite-and-reel`)** | `TRIPPED`-tila ja lipun reaktio tärpissä, `quiet_water_bite_bonus` ja parvietäisyys vieheen sijainnista. |
-| **S10 (`10-landing-net-and-catch`)** | Plaanarin irrotusinteraktio (`attached == true` estää haavituksen kunnes irrotettu veneen laidalla). |
+| **S9a (`09a-bite-and-reel`)** | `TRIPPED`-tila ja lipun reaktio kalan koon mukaan, taistelusykli, `quiet_water_bite_bonus` ja parvietäisyys vieheen sijainnista. |
+| **S9b (`09b-planer-detach`)** | Plaanarin irrotuslukko laidalla (`detach_distance = 2.0 m`) sekä jatkuva `E`-pitoirrotus (`interact_held` + `detach_progress`) yksin telineestä tai kaverin auttamana. |
+| **S10 (`10-landing-net-and-catch`)** | Haavitus veneen laidalta sumppuun (`READY_TO_LAND`) ja saalislaskuri. |
 | **S11 (`11-line-tension`)** | `snag_tension_rate`-kireysnousu sekä plaanarin vaikutus kireyteen. |
 | **S12 (`12-trolling-window-and-tangles`)** | Sisäkaarteen ja pysähdyksen `TANGLED`-törmäystunnistus + solmun selvitys kannella. |
 | **S16 (`16-lake-obstacles`)** | `WorldFeatures`-esteet (saaret/karikot) ja `SNAGGED`-lukitus. |

@@ -238,19 +238,40 @@ func test_in_hand_reel_auto_planer_bypass_no_false_tangle_and_carry_persistence(
 	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
 	p1.local_position = Vector3(0.0, CrewSimulator.DECK_SURFACE_Y, 0.0)
 
-	# Reel in hand: auto planer bypass at <= 2.0m, surface at <= 8.0m, stop at READY_TO_LAND
-	var saw_bypass := false
+	# Reel in hand stops at planer detach lock (2.0 m), manual holder detach unlocks leader (+6.0 m), then reel to READY_TO_LAND
 	for _i in range(420):
 		rod_sim.step(state, {1: reel_in}, RodSimulator.FIXED_DELTA)
 		fish_sim.step(state, {1: reel_in}, rod_sim, FishSimulator.FIXED_DELTA)
-		if not rod_l3.planer.attached and not saw_bypass:
-			saw_bypass = true
-			assert_true(rod_l3.planer.line_out > 6.0, "Auto planer bypass adds leader_length cleanly")
-			assert_true(fish.surfaced, "Fish surfaces after planer bypass within 8m")
+	assert_true(rod_l3.planer.attached, "Reeling stops at planer detach lock before manual detach")
+	assert_almost_eq(rod_l3.planer.line_out, fish_sim.config.detach_distance, 0.05, "Line stops at detach_distance (2.0 m)")
+
+	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_true(not item_l3.is_carried(), "Player 1 places detach-ready rod into holder")
+
+	var detach_in := PlayerInput.new()
+	detach_in.interact_held = true
+	var saw_detach := false
+	for _i in range(90):
+		rod_sim.step(state, {1: detach_in}, RodSimulator.FIXED_DELTA)
+		fish_sim.step(state, {1: detach_in}, rod_sim, FishSimulator.FIXED_DELTA)
+		if not rod_l3.planer.attached and not saw_detach:
+			saw_detach = true
+			assert_true(rod_l3.planer.line_out > 6.0, "Planer detach adds leader_length cleanly")
+			assert_true(fish.surfaced, "Fish surfaces after planer detach within 8m")
+			break
+
+	assert_true(saw_detach, "Manual holder planer detach succeeded during reel-in flow")
+
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_true(state.get_player_held_item(1) == item_l3, "Player 1 picks rod back up after detach")
+	p1.local_position = Vector3(0.0, CrewSimulator.DECK_SURFACE_Y, 0.0)
+	for _i in range(420):
+		rod_sim.step(state, {1: reel_in}, RodSimulator.FIXED_DELTA)
+		fish_sim.step(state, {1: reel_in}, rod_sim, FishSimulator.FIXED_DELTA)
 		if fish.is_ready_to_land():
 			break
 
-	assert_true(saw_bypass, "Planer auto-bypass occurred during S9a reel-in")
 	assert_eq(fish.state, FishState.STATE_READY_TO_LAND, "Reeling stops cleanly at READY_TO_LAND")
 	assert_almost_eq(rod_l3.planer.line_out, fish_sim.config.ready_to_land_distance, 0.05, "Line stops at ready_to_land_distance (1.5 m)")
 

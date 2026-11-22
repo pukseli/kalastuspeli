@@ -58,6 +58,8 @@ func step(state: GameState, inputs: Dictionary, _delta: float = FIXED_DELTA, blo
 			continue
 
 		var held := state.get_player_held_item(pid)
+		if held == null and not FishSimulator.find_detach_target_for_player(state, pid).is_empty():
+			continue
 		var best_hid := ""
 		var best_dist := INF
 

@@ -38,6 +38,7 @@
 | `move_x` | `float` | `0.0` | Kansikävelysyöte X-akselilla (`-1.0 .. 1.0`: `A = -1.0`, `D = +1.0`, lisätty S3) |
 | `move_z` | `float` | `0.0` | Kansikävelysyöte Z-akselilla (`-1.0 .. 1.0`: `W = -1.0` keulaan, `S = +1.0` perään, lisätty S3) |
 | `interact` | `bool` | `false` | Aseman varaus/vapautus (`E`-näppäin, lisätty S4) |
+| `interact_held` | `bool` | `false` | Jatkuva pidetty interaktio (`E` pohjassa plaanarin irrotukseen, lisätty S9b) |
 | `line_input` | `float` | `0.0` | Siiman säätösyöte (`+1.0` ulos `Q`/`Shift`, `-1.0` sisään `Space`, lisätty S8) |
 
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
@@ -124,7 +125,7 @@
 **Apumetodit:** `is_deployed() -> bool`, `get_line_out() -> float`, `clone() -> RodState`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
-### Viipale S9a (`09a-bite-and-reel`)
+### Viipaleet S9a–S9b (`09a-bite-and-reel`, `09b-planer-detach`)
 
 #### 8. `FishState` (`extends RefCounted`, `src/core/state/fish_state.gd`)
 
@@ -141,6 +142,7 @@
 | `surge_cooldown` | `float` | `2.0` | Aika seuraavaan syöksyyn (`s`) |
 | `jump_progress` | `float` | `0.0` | Pintahypyn vaihe (`0.0 .. 1.0`) |
 | `lift_progress` | `float` | `0.0` | Ilman haavia nostamisen `Space`-mittari (`0.0 .. 1.0`) |
+| `detach_progress` | `float` | `0.0` | Plaanarin irrotusmittari (`0.0 .. 1.0`, lisätty S9b) |
 | `hooked_time` | `float` | `0.0` | Koukussa oltu kokonaisaika suojajaksoa varten (`s`) |
 | `unattended_time` | `float` | `0.0` | Ilman kelausta kulunut aika (`s`) |
 | `surfaced` | `bool` | `false` | Onko kala noussut pintaan näkyviin (`<= 8.0 m`) |
@@ -151,10 +153,9 @@
 
 ---
 
-## Suunniteltu tietoskeema (tulevat viipaleet S9b+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
+## Suunniteltu tietoskeema (tulevat viipaleet S10+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
 
-> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState`, `GameState.rods`, `FishState` ja `GameState.fishes` on toteutettu viipaleissa `S8–S9a`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
-> - **`S9b` (`09b-planer-detach`):** `PlayerInput.interact_held`, `FishState.detach_progress` ja `PlanerBoard.attached` -irrotuslukko veneen laidalla (yksin tai kaverin auttamana).
+> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState`, `GameState.rods`, `FishState`, `GameState.fishes` ja `PlayerInput.interact_held` on toteutettu viipaleissa `S8–S9b`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
 > - **`S10` (`10-landing-net-and-catch`):** Haavi (`HeldItem`), kalasumppu ja tiimin saalislaskuri.
 > - **`S11` (`11-line-tension`):** Siiman kireys (`tension`), ylikelauskatkeaminen ja `snag_tension_rate`-kireysnousu.
 > - **`S12` (`12-trolling-window-and-tangles`):** Uisteluikkunakalibrointi ja `TANGLED`-solmun selvitys kannella.

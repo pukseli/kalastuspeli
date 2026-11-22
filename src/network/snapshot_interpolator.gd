@@ -447,6 +447,7 @@ func _interpolate_fishes_into(
 			dst.stamina = lerpf(fa.stamina, fb.stamina, t)
 			dst.drag_rate = lerpf(fa.drag_rate, fb.drag_rate, t)
 			dst.lift_progress = lerpf(fa.lift_progress, fb.lift_progress, t)
+			dst.detach_progress = lerpf(fa.detach_progress, fb.detach_progress, t)
 			dst.fight_phase = wrapf(lerp_angle(fa.fight_phase, fb.fight_phase, t), 0.0, TAU)
 			if fb.jump_progress >= fa.jump_progress:
 				dst.jump_progress = lerpf(fa.jump_progress, fb.jump_progress, t)
@@ -456,6 +457,7 @@ func _interpolate_fishes_into(
 			dst.stamina = fb.stamina
 			dst.drag_rate = fb.drag_rate
 			dst.lift_progress = fb.lift_progress
+			dst.detach_progress = fb.detach_progress
 			dst.fight_phase = fb.fight_phase
 			dst.jump_progress = fb.jump_progress
 

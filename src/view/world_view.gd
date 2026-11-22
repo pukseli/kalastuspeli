@@ -175,6 +175,10 @@ func _init_trolling_resources() -> void:
 	mat_snagged.albedo_color = Color(0.95, 0.18, 0.18)
 	_planer_body_mats["snagged"] = mat_snagged
 
+	var mat_detach := StandardMaterial3D.new()
+	mat_detach.albedo_color = Color(0.22, 0.92, 0.52)
+	_planer_body_mats["detach_ready"] = mat_detach
+
 	var flag_normal := StandardMaterial3D.new()
 	flag_normal.albedo_color = Color(1.0, 0.90, 0.15)
 	_flag_mats["normal"] = flag_normal
@@ -315,7 +319,31 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 					best_hid = hid
 					best_holder = holder
 
-		if not best_sid.is_empty() and (best_hid.is_empty() or best_station_dist <= best_holder_dist):
+		var detach_target: Dictionary = {}
+		if held_item == null:
+			detach_target = FishSimulator.find_detach_target_for_player(game_state, local_peer_id)
+
+		var use_detach_prompt := not detach_target.is_empty() and (best_sid.is_empty() or float(detach_target.get("distance", INF)) < best_station_dist)
+		if use_detach_prompt:
+			var target_rid := str(detach_target["rod_id"])
+			var target_item := game_state.items.get(target_rid, null) as HeldItem
+			var target_rod := game_state.get_rod_state(target_rid)
+			var target_fish := game_state.get_fish_state(target_rid)
+			var detach_pct := roundi(target_fish.detach_progress * 100.0) if target_fish != null else 0
+			var rod_name := _format_held_item_label(target_item)
+			if str(detach_target.get("mode", "")) == "coop":
+				prompt = "[Pidä E] Irrota kaverin plaanari (%d%%)" % detach_pct
+				line_prompt = "[Pidä E pohjassa] Auta irrottamaan plaanari (%d%%) | %s" % [detach_pct, rod_name]
+			else:
+				var holder_label := target_item.holder_id.substr(4) if (target_item != null and target_item.holder_id.begins_with("rod_")) else best_hid
+				if target_item != null and game_state.item_config != null:
+					var h_cfg := game_state.item_config.get_holder(target_item.holder_id)
+					if not h_cfg.is_empty():
+						holder_label = str(h_cfg.get("label", holder_label))
+				prompt = "[Pidä E] Irrota plaanari (%s) %d%%" % [holder_label, detach_pct]
+				var dist_m := target_rod.planer.line_out if target_rod != null else 0.0
+				line_prompt = "[Pidä E pohjassa] Irrota plaanari (%d%%) | %s (Plaanari): %.1f m" % [detach_pct, rod_name, dist_m]
+		elif not best_sid.is_empty() and (best_hid.is_empty() or best_station_dist <= best_holder_dist):
 			var cfg := StationConfig.get_station_config(best_sid)
 			var occupant := int(game_state.stations.get(best_sid, 0))
 			if occupant != 0:
@@ -361,7 +389,7 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 					best_rod_dist = dist
 					active_rod_item = nearby_item
 
-		if active_rod_item != null:
+		if line_prompt.is_empty() and active_rod_item != null:
 			var active_rod := game_state.get_rod_state(active_rod_item.id)
 			if active_rod != null:
 				var rod_name := _format_held_item_label(active_rod_item)
@@ -382,6 +410,15 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 								sp_label,
 								risk_pct,
 							]
+						elif FishSimulator.is_rod_ready_for_planer_detach(active_rod, active_fish):
+							if active_fish.detach_progress > 0.01:
+								var detach_pct := roundi(active_fish.detach_progress * 100.0)
+								line_prompt = "[Kaveri irrottaa plaanaria: %d%%] Pidä vapa vakaana! | %s" % [detach_pct, rod_name]
+							else:
+								line_prompt = "[PLAANARI LAIDALLA] Aseta vapa telineeseen [E] tai pyydä kaveri [Pidä E] | %s: %.1f m" % [
+									rod_name,
+									active_rod.planer.line_out,
+								]
 						else:
 							var raikka_tag := " [RÄIKKÄ!]" if active_fish.is_drag_active() else ""
 							var sp_tag := " (%s)" % FishSimulator.get_species_display_name(active_fish.species) if active_fish.surfaced else " (Tuntematon kala)"
@@ -607,6 +644,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			var board_pitch := clampf(rod.planer.pull_back_offset * 0.085, 0.0, 0.60)
 			var board_roll := sin(phase * 9.0) * 0.35 * shake
 			var board_yaw := game_state.boat.heading + rod.trail_angle + cos(phase * 7.0) * 0.18 * shake
+			var detach_ready := FishSimulator.is_rod_ready_for_planer_detach(rod, fish)
 			active_planers[rid_str] = {
 				"pos": board_world,
 				"state": rod.planer.state,
@@ -614,6 +652,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 				"pitch": board_pitch,
 				"roll": board_roll,
 				"flag_angle": rod.planer.flag_angle,
+				"detach_ready": detach_ready,
 			}
 			_append_curved_segment(line_vertices, tip_world, board_world, 3, 0.22)
 			_append_curved_segment(line_vertices, board_world, end_world, 2, 0.0)
@@ -643,7 +682,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			_planer_views[rid] = p_node
 		p_node.position = p_info["pos"]
 		p_node.rotation = Vector3(float(p_info["pitch"]), float(p_info["yaw"]), float(p_info["roll"]))
-		_update_planer_visual_state(p_node, str(p_info["state"]), float(p_info["flag_angle"]))
+		_update_planer_visual_state(p_node, str(p_info["state"]), float(p_info["flag_angle"]), bool(p_info.get("detach_ready", false)))
 
 	for existing_lid in _lure_views.keys():
 		if not active_lures.has(existing_lid):
@@ -730,7 +769,7 @@ func _create_planer_node(rod_id: String) -> Node3D:
 	return root
 
 
-func _update_planer_visual_state(planer_node: Node3D, state_name: String, flag_angle: float = 0.0) -> void:
+func _update_planer_visual_state(planer_node: Node3D, state_name: String, flag_angle: float = 0.0, detach_ready: bool = false) -> void:
 	var body := planer_node.get_node_or_null("Body") as MeshInstance3D
 	var flag_pivot := planer_node.get_node_or_null("FlagPivot") as Node3D
 	var flag := planer_node.get_node_or_null("FlagPivot/Flag") as MeshInstance3D
@@ -740,6 +779,8 @@ func _update_planer_visual_state(planer_node: Node3D, state_name: String, flag_a
 			body.material_override = _planer_body_mats["tangled"]
 		elif state_name == PlanerBoard.STATE_SNAGGED:
 			body.material_override = _planer_body_mats["snagged"]
+		elif detach_ready:
+			body.material_override = _planer_body_mats["detach_ready"]
 		else:
 			body.material_override = _planer_body_mats["normal"]
 

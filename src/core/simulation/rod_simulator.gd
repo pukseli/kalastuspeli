@@ -307,6 +307,8 @@ func _check_planer_tangles(
 			continue
 		var has_fish := state.has_fish_on_rod(rid)
 		var fish := state.get_fish_state(rid)
+		if fish != null and fish.detach_progress > 0.0:
+			continue
 		var fish_energetic := fish != null and fish.stamina > 0.05
 		var unattended_heavy_drift := (
 			has_fish

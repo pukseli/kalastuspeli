@@ -3,6 +3,11 @@ extends RefCounted
 ## Pure simulation step for trolling bites, species behavior, reel drag, jumps, and netless lifting.
 
 const FIXED_DELTA: float = 1.0 / 60.0
+const DEFAULT_DETACH_DISTANCE: float = 2.0
+const DEFAULT_DETACH_WINDOW_DISTANCE: float = 3.5
+const DEFAULT_DETACH_HOLD_DURATION: float = 0.8
+const DEFAULT_DETACH_DECAY_RATE: float = 1.5
+const DEFAULT_COOP_DETACH_RADIUS: float = 1.6
 
 const SPECIES_SPECS: Dictionary = {
 	FishState.SPECIES_VENDACE: {
@@ -200,7 +205,11 @@ class Config extends RefCounted:
 	var shakeoff_unattended_bonus: float = 0.04
 	var jump_chance_on_surge: float = 0.75
 	var jump_duration_sec: float = 1.1
-	var auto_detach_distance: float = 2.0
+	var detach_distance: float = DEFAULT_DETACH_DISTANCE
+	var detach_window_distance: float = DEFAULT_DETACH_WINDOW_DISTANCE
+	var detach_hold_duration: float = DEFAULT_DETACH_HOLD_DURATION
+	var detach_decay_rate: float = DEFAULT_DETACH_DECAY_RATE
+	var coop_detach_radius: float = DEFAULT_COOP_DETACH_RADIUS
 	var surface_reveal_distance: float = 8.0
 	var ready_to_land_distance: float = 1.5
 	var lift_hold_duration: float = 1.2
@@ -252,6 +261,77 @@ static func get_strike_reaction_profile(size_class: String) -> Dictionary:
 
 func compute_size_class(weight_kg: float) -> String:
 	return FishState.compute_size_class(weight_kg, config.small_max_kg, config.medium_max_kg, config.large_max_kg)
+
+
+static func is_rod_ready_for_planer_detach(
+	rod: RodState,
+	fish: FishState,
+	detach_window_distance: float = DEFAULT_DETACH_WINDOW_DISTANCE
+) -> bool:
+	if rod == null or rod.planer == null or fish == null:
+		return false
+	return (
+		fish.state == FishState.STATE_HOOKED
+		and rod.planer.attached
+		and rod.planer.state != PlanerBoard.STATE_TANGLED
+		and rod.planer.state != PlanerBoard.STATE_SNAGGED
+		and rod.planer.line_out <= detach_window_distance + 0.001
+	)
+
+
+static func find_detach_target_for_player(
+	state: GameState,
+	peer_id: int,
+	detach_window_distance: float = DEFAULT_DETACH_WINDOW_DISTANCE,
+	coop_radius: float = DEFAULT_COOP_DETACH_RADIUS
+) -> Dictionary:
+	if state == null or peer_id == 0 or not state.players.has(peer_id):
+		return {}
+	var player: PlayerState = state.players[peer_id]
+	if player.is_bot or state.is_player_at_station(peer_id) or state.is_player_holding_item(peer_id):
+		return {}
+
+	var fish_ids: Array[String] = []
+	for fid in state.fishes.keys():
+		fish_ids.append(str(fid))
+	fish_ids.sort()
+
+	var best_rid := ""
+	var best_mode := ""
+	var best_dist := INF
+
+	for rid in fish_ids:
+		var fish := state.get_fish_state(rid)
+		var rod := state.get_rod_state(rid)
+		var item := state.items.get(rid, null) as HeldItem
+		if item == null or not is_rod_ready_for_planer_detach(rod, fish, detach_window_distance):
+			continue
+		if not item.is_carried() and not item.holder_id.is_empty() and state.item_config != null:
+			var holder := state.item_config.get_holder(item.holder_id)
+			if holder.is_empty():
+				continue
+			var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
+			var radius := float(holder.get("radius", ItemConfig.DEFAULT_HOLDER_RADIUS))
+			var dx := player.local_position.x - pos.x
+			var dz := player.local_position.z - pos.z
+			var dist := sqrt(dx * dx + dz * dz)
+			if dist <= radius and dist < best_dist:
+				best_dist = dist
+				best_rid = rid
+				best_mode = "holder"
+		elif item.is_carried() and item.carrier_peer_id != peer_id and state.players.has(item.carrier_peer_id):
+			var carrier: PlayerState = state.players[item.carrier_peer_id]
+			var dx := player.local_position.x - carrier.local_position.x
+			var dz := player.local_position.z - carrier.local_position.z
+			var dist := sqrt(dx * dx + dz * dz)
+			if dist <= coop_radius and dist < best_dist:
+				best_dist = dist
+				best_rid = rid
+				best_mode = "coop"
+
+	if best_rid.is_empty():
+		return {}
+	return {"rod_id": best_rid, "mode": best_mode, "distance": best_dist}
 
 
 static func format_weight(weight_kg: float) -> String:
@@ -467,8 +547,10 @@ func _step_hooked_fish(
 ) -> void:
 	var spec := get_species_spec(fish.species)
 	var is_reeling := _is_player_reeling_rod(state, inputs, item)
+	var ready_for_detach := is_rod_ready_for_planer_detach(rod, fish, config.detach_window_distance)
+	var is_detaching := ready_for_detach and _is_any_player_detaching_rod(state, inputs, fish.rod_id)
 	fish.hooked_time += delta
-	fish.unattended_time = 0.0 if is_reeling else (fish.unattended_time + delta)
+	fish.unattended_time = 0.0 if (is_reeling or is_detaching) else (fish.unattended_time + delta)
 
 	var phase_speed := 10.0 if fish.surge_timer > 0.0 else (6.5 if fish.stamina > 0.05 else 3.5)
 	fish.fight_phase = wrapf(fish.fight_phase + delta * phase_speed, 0.0, TAU)
@@ -519,30 +601,30 @@ func _step_hooked_fish(
 	var raw_pull := lerpf(float(spec["base_pull"]), float(spec["surge_pull"]), 1.0 if fish.surge_timer > 0.0 else 0.0) * stamina_factor
 	fish.drag_rate = clampf((raw_pull - config.drag_resistance) * config.drag_slip_scale, 0.0, config.max_drag_slip_speed)
 
-	# Line adjustment: reeling in hand vs drag slip when not reeling
+	# Line adjustment: reeling in hand (stops at detach lock when planer attached) vs drag slip
 	var prev_line := rod.planer.line_out
 	if is_reeling:
 		var reel_speed := maxf(0.35, float(spec["reel_speed"]) - fish.drag_rate * 0.65)
 		var next_line := maxf(0.0, prev_line - reel_speed * delta)
+		if rod.planer.attached and next_line < config.detach_distance:
+			next_line = minf(prev_line, config.detach_distance)
 		rod.planer.line_out = next_line
 		if prev_line > 0.001 and next_line > 0.001:
 			rod.planer.lateral_offset *= (next_line / prev_line)
-	elif fish.drag_rate > 0.001:
+	elif fish.drag_rate > 0.001 and not is_detaching:
 		rod.planer.line_out = minf(rod_sim.config.max_line_out, prev_line + fish.drag_rate * delta)
 
-	# S9a automatic planer bypass at auto_detach_distance
-	if rod.planer.attached and rod.planer.line_out <= config.auto_detach_distance:
-		var dx := rod.planer.lateral_offset
-		var dz := sqrt(maxf(0.01, rod.planer.line_out * rod.planer.line_out - dx * dx))
-		rod.trail_angle = wrapf(atan2(dx, dz), -PI, PI)
-		rod.planer.attached = false
-		rod.planer.lateral_offset = 0.0
-		rod.planer.reset_strike_reaction()
-		rod.planer.line_out = rod.planer.line_out + rod_sim.config.leader_length
-		rod.planer.state = PlanerBoard.STATE_TROLLING if state.boat.forward_speed >= rod_sim.config.min_pull_speed else PlanerBoard.STATE_DEPLOYING
+	# S9b manual planer detach lock (hold E in holder or by empty-handed co-op teammate)
+	ready_for_detach = is_rod_ready_for_planer_detach(rod, fish, config.detach_window_distance)
+	if ready_for_detach and is_detaching:
+		fish.detach_progress = minf(1.0, fish.detach_progress + delta / maxf(0.1, config.detach_hold_duration))
+		if fish.detach_progress >= 1.0:
+			_complete_planer_detach(state, rod, fish, rod_sim)
+	else:
+		fish.detach_progress = maxf(0.0, fish.detach_progress - config.detach_decay_rate * delta)
 
 	var dist := get_fish_distance(rod, rod_sim)
-	if dist <= config.surface_reveal_distance:
+	if dist <= config.surface_reveal_distance + 0.01:
 		fish.surfaced = true
 
 	if not rod.planer.attached and rod.planer.line_out <= config.ready_to_land_distance:
@@ -568,6 +650,7 @@ func _step_ready_to_land(
 	fish.drag_rate = 0.0
 	fish.surge_timer = 0.0
 	fish.jump_progress = 0.0
+	fish.detach_progress = 0.0
 	fish.fight_phase = wrapf(fish.fight_phase + delta * 5.0, 0.0, TAU)
 	rod.planer.line_out = config.ready_to_land_distance
 	rod.planer.reset_strike_reaction()
@@ -652,6 +735,10 @@ func _update_planer_strike_reaction(rod: RodState, fish: FishState, delta: float
 		t_sub *= 0.35
 		t_shake *= 0.35
 
+	var close_scale := clampf((rod.planer.line_out - config.detach_distance) / 4.0, 0.0, 1.0)
+	t_pull *= close_scale
+	t_sub *= lerpf(0.15, 1.0, close_scale)
+
 	rod.planer.pull_back_offset = move_toward(rod.planer.pull_back_offset, t_pull, config.reaction_pull_back_rate * delta)
 	rod.planer.submersion = move_toward(rod.planer.submersion, t_sub, config.reaction_submersion_rate * delta)
 	rod.planer.flag_angle = move_toward(rod.planer.flag_angle, t_flag, config.reaction_flag_rate * delta)
@@ -679,6 +766,45 @@ func _get_player_input(inputs: Dictionary, pid: int) -> Variant:
 	if inputs.has(str_pid):
 		return inputs[str_pid]
 	return null
+
+
+func _complete_planer_detach(state: GameState, rod: RodState, fish: FishState, rod_sim: RodSimulator) -> void:
+	var dx := rod.planer.lateral_offset
+	var dz := sqrt(maxf(0.01, rod.planer.line_out * rod.planer.line_out - dx * dx))
+	rod.trail_angle = wrapf(atan2(dx, dz), -PI, PI)
+	rod.planer.attached = false
+	rod.planer.lateral_offset = 0.0
+	rod.planer.reset_strike_reaction()
+	rod.planer.line_out = rod.planer.line_out + rod_sim.config.leader_length
+	rod.planer.state = PlanerBoard.STATE_TROLLING if state.boat.forward_speed >= rod_sim.config.min_pull_speed else PlanerBoard.STATE_DEPLOYING
+	fish.detach_progress = 0.0
+	if get_fish_distance(rod, rod_sim) <= config.surface_reveal_distance + 0.05:
+		fish.surfaced = true
+	state.set_fish_notice("Plaanari irrotettu! Kelaa kala veneen viereen!", 3.0)
+
+
+func _is_interact_held(raw_input: Variant) -> bool:
+	if raw_input is PlayerInput:
+		return (raw_input as PlayerInput).interact_held
+	if raw_input is Dictionary:
+		return bool((raw_input as Dictionary).get("interact_held", false))
+	return false
+
+
+func _is_any_player_detaching_rod(state: GameState, inputs: Dictionary, rod_id: String) -> bool:
+	var pids: Array[int] = []
+	for pid_raw in inputs.keys():
+		var pid := int(pid_raw)
+		if pid != 0 and not pids.has(pid):
+			pids.append(pid)
+	pids.sort()
+	for pid in pids:
+		if not _is_interact_held(_get_player_input(inputs, pid)):
+			continue
+		var target := find_detach_target_for_player(state, pid, config.detach_window_distance, config.coop_detach_radius)
+		if str(target.get("rod_id", "")) == rod_id:
+			return true
+	return false
 
 
 func _get_line_input(raw_input: Variant) -> float:
