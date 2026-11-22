@@ -173,23 +173,21 @@ static func map_control_inputs(
 	var cam_yaw_axis := 0.0
 	var cam_pitch_axis := 0.0
 
+	var use_wasd_for_move := (scheme == SCHEME_WASD_MOUSE)
+	var move_in_x := wasd_x if use_wasd_for_move else arrow_x
+	var move_in_y := wasd_y if use_wasd_for_move else arrow_y
+
+	if not use_wasd_for_move:
+		cam_yaw_axis = -wasd_x
+		cam_pitch_axis = wasd_y
+
 	if helm_active:
-		if scheme == SCHEME_WASD_MOUSE:
-			throttle = clampf(wasd_y + arrow_y, -1.0, 1.0)
-			steering = clampf(-(wasd_x + arrow_x), -1.0, 1.0)
-			cam_yaw_axis = 0.0
-			cam_pitch_axis = 0.0
-		else:
-			throttle = arrow_y
-			steering = -arrow_x
-			cam_yaw_axis = -wasd_x
-			cam_pitch_axis = wasd_y
+		throttle = clampf(move_in_y, -1.0, 1.0)
+		steering = clampf(-move_in_x, -1.0, 1.0)
 	else:
-		var projected := project_deck_input(wasd_x, wasd_y, cam_yaw_rad)
+		var projected := project_deck_input(move_in_x, move_in_y, cam_yaw_rad)
 		move_x = projected.x
 		move_z = projected.y
-		cam_yaw_axis = -arrow_x
-		cam_pitch_axis = arrow_y
 
 	return {
 		"throttle": throttle,
@@ -204,6 +202,8 @@ static func map_control_inputs(
 func get_control_mode_hud_text(helm_active: bool, held_label: String) -> String:
 	if helm_active:
 		if control_scheme == SCHEME_WASD_MOUSE:
-			return "RUORISSA (Ajo: WASD/Nuolet | Kamera: Hiiri | Reset: R | Profiili [K]: %s | E: Poistu)" % control_scheme
+			return "RUORISSA (Ajo: WASD | Kamera: Hiiri | Reset: R | Profiili [K]: %s | E: Poistu)" % control_scheme
 		return "RUORISSA (Ajo: Nuolet | Kamera: WASD/Hiiri | Reset: R | Profiili [K]: %s | E: Poistu)" % control_scheme
-	return "KANNELLA (Kävely: WASD | Kamera: Nuolet/Hiiri/Rulla | Reset: R | Profiili [K]: %s | E: Käytä) | Kädessä: %s" % [control_scheme, held_label]
+	if control_scheme == SCHEME_WASD_MOUSE:
+		return "KANNELLA (Kävely: WASD | Kamera: Hiiri/Rulla | Reset: R | Profiili [K]: %s | E: Käytä) | Kädessä: %s" % [control_scheme, held_label]
+	return "KANNELLA (Kävely: Nuolet | Kamera: WASD/Hiiri/Rulla | Reset: R | Profiili [K]: %s | E: Käytä) | Kädessä: %s" % [control_scheme, held_label]

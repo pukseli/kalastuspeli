@@ -25,9 +25,9 @@ Ei muutoksia tiedostoon `specs/01-state-schema.md` (`GameState` ja `PlayerInput`
 ## 3. Rules & Math
 
 - **Laite-agnostinen rajapinta:** `CameraController` vastaanottaa vain normalisoituja akseleita (`yaw_axis`, `pitch_axis`, `zoom_delta`, `reset()`), ilman `Input`- tai näppäinriippuvuuksia (valmis hiirelle ja tulevalle peliohjaimelle).
-- **Ohjausprofiilit (`K` / `--controls`):**
-  - `arrows_wasd` *(oletus)*: Ruorissa **Nuolet** = vene, **`WASD`** = kamera (+ oikea hiiri); kannella **`WASD`** = kamerasuuntainen kävely, **Nuolet** = kamera (+ oikea hiiri).
-  - `wasd_mouse`: Ruorissa **`WASD`** (ja Nuolet) = vene, **oikea hiiri** = kamera; kannella **`WASD`** = kamerasuuntainen kävely, **oikea hiiri** (ja Nuolet) = kamera.
+- **Ohjausprofiilit (`K` / `--controls`, roolit pysyvät samoina kannella ja ruorissa):**
+  - `arrows_wasd` *(oletus)*: **Nuolet** = liike (kannella kamerasuuntainen kävely, ruorissa vene), **`WASD`** (+ oikea hiiri) = kamera/PoV.
+  - `wasd_mouse`: **`WASD`** = liike (kannella kamerasuuntainen kävely, ruorissa vene), **oikea hiiri** = kamera/PoV.
 - **Kamerasuuntainen kävely:** `move_x = sx*cos(y) - sf*sin(y)`, `move_z = -sx*sin(y) - sf*cos(y)` (`y = current_yaw`).
 - **Reset & zoom:** `R` (ja hiiren keskinappi) palauttaa kameran pehmeästi tilan oletukseen; hiiren rulla säätää kannen etäisyyttä (`[7.0, 20.0]` m). Tilanvaihto `E` (ruori ↔ kansi) palauttaa uuden tilan oletukseen.
 - **Pallokoordinaattikamera:** `fwd = (-cos(p)*sin(y), sin(p), -cos(p)*cos(y))`, `local_pos = current_pivot - fwd * current_dist`, maailmasijainti `boat.world_position + local_pos.rotated(UP, heading)`, rotaatio `(p, wrapf(heading + y, -PI, PI), 0)`. Vapaa 360° yaw molemmissa tiloissa.
@@ -47,12 +47,12 @@ Tiedosto: `tests/test_07_camera_controls.gd` (5 testiä).
 - `test_default_deck_and_helm_views_and_mode_switch_reset`: **Given** `WorldView` & `GameState` **When** tila vaihdetaan kansi ↔ ruori (`snap=true`) **Then** kansi katsoo perään (`heading + PI`, `-28°`), ruori eteen (`heading`, `-15°`, `HELM_CAM_OFFSET`) ja tilanvaihto nollaa offsetit.
 - `test_camera_360_yaw_pitch_clamping_and_reset`: **Given** `CameraController` kannella ja ruorissa **When** yaw käännetään yli ±180°, pitch yli rajojen ja kutsutaan `reset_to_default()` **Then** 360° yaw kiertää siististi, pitch rajautuu ja reset palauttaa oletukset.
 - `test_screen_relative_deck_walk_projection_tracks_camera_yaw`: **Given** `CameraController.project_deck_input` **When** testataan kulmilla `0`, `PI`, `+PI/2`, `-PI/2` **Then** `W` kulkee aina kameran eteen ja `D` 90° oikealle veneen paikallisessa koordinaatistossa.
-- `test_control_profiles_and_zoom_clamping`: **Given** `arrows_wasd`- ja `wasd_mouse`-profiilit sekä zoom-/hiirisyötteet **When** syötteet mapataan ruorissa/kannella ja zoom viedään yli rajojen **Then** profiilit erottelevat ruorin ajo/kamera-akselit oikein, kannen zoom rajautuu `[7.0, 20.0]` m ja ruorin etäisyys pysyy `0.0`.
+- `test_control_profiles_and_zoom_clamping`: **Given** `arrows_wasd`- ja `wasd_mouse`-profiilit sekä zoom-/hiirisyötteet **When** syötteet mapataan ruorissa ja kannella **Then** liike- ja PoV-näppäimet pysyvät samoina tilojen välillä, kannen zoom rajautuu `[7.0, 20.0]` m ja ruorin etäisyys pysyy `0.0`.
 - `test_camera_stays_client_local_and_updates_hud_controls`: **Given** `GameState` ja `WorldView` **When** paikallista kameraa käännetään ja profiilia vaihdetaan **Then** `GameState.to_dict()` ei sisällä kamerakenttiä, `WorldView` päivittää kameran ja HUD näyttää aktiivisen profiilin ohjeet.
 
 ## 5. Manuaalinen verifiointi
 
-- Testaa Offline ja Host+Client molemmilla profiileilla (`K`-vaihto): ruorissa ajo + kameran kääntö + reset `R`; kannella kamerasuuntainen kävely + kamera nuolilla & hiirellä + zoom rullalla + reset `R`; tarkista ettei toisen ikkunan kamera liiku ja budjetit (`FPS >= 60`, `Draw Calls < 100`, `Tris < 20 000`).
+- Testaa Offline ja Host+Client molemmilla profiileilla (`K`-vaihto): `arrows_wasd` (Nuolet = liike, `WASD` = PoV) ja `wasd_mouse` (`WASD` = liike, hiiri = PoV) sekä kannella että ruorissa (`E` ei vaihda näppäinrooleja), reset `R`, zoom rullalla ja budjetit (`FPS >= 60`, `Draw Calls < 100`, `Tris < 20 000`).
 
 ## 6. Tiedostot
 

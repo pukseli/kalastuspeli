@@ -113,25 +113,33 @@ func test_control_profiles_and_zoom_clamping() -> void:
 	assert_eq(CameraController.parse_control_scheme_from_args(PackedStringArray([])), CameraController.SCHEME_ARROWS_WASD, "Default control scheme is arrows_wasd")
 	assert_eq(CameraController.parse_control_scheme_from_args(PackedStringArray(["--controls", "wasd_mouse"])), CameraController.SCHEME_WASD_MOUSE, "CLI --controls parses wasd_mouse")
 
-	# Profile arrows_wasd in helm: arrows drive boat, WASD turns camera
+	# Profile arrows_wasd in helm: arrows drive boat, WASD turns PoV camera
 	var helm_aw := CameraController.map_control_inputs(CameraController.SCHEME_ARROWS_WASD, true, -1.0, 1.0, 1.0, 1.0, 0.0)
 	assert_almost_eq(float(helm_aw["throttle"]), 1.0, 0.001, "arrows_wasd helm: UP arrow controls throttle")
 	assert_almost_eq(float(helm_aw["steering"]), -1.0, 0.001, "arrows_wasd helm: RIGHT arrow steers right (-1)")
 	assert_almost_eq(float(helm_aw["cam_yaw_axis"]), 1.0, 0.001, "arrows_wasd helm: A turns camera left (+1)")
 	assert_almost_eq(float(helm_aw["cam_pitch_axis"]), 1.0, 0.001, "arrows_wasd helm: W tilts camera up (+1)")
 
-	# Profile wasd_mouse in helm: WASD drives boat, keyboard camera axes stay 0 (mouse handles camera)
-	var helm_wm := CameraController.map_control_inputs(CameraController.SCHEME_WASD_MOUSE, true, -1.0, 1.0, 0.0, 0.0, 0.0)
+	# Profile arrows_wasd on deck: arrows STILL drive movement, WASD STILL turns PoV camera (keys never swap)
+	var deck_aw := CameraController.map_control_inputs(CameraController.SCHEME_ARROWS_WASD, false, -1.0, -1.0, 0.0, 1.0, PI)
+	assert_almost_eq(float(deck_aw["move_z"]), 1.0, 0.001, "arrows_wasd deck: UP arrow projects walk toward stern (+Z) when facing aft")
+	assert_almost_eq(float(deck_aw["move_x"]), 0.0, 0.001, "arrows_wasd deck: UP arrow produces zero lateral walk")
+	assert_almost_eq(float(deck_aw["cam_yaw_axis"]), 1.0, 0.001, "arrows_wasd deck: A turns camera left (+1)")
+	assert_almost_eq(float(deck_aw["cam_pitch_axis"]), -1.0, 0.001, "arrows_wasd deck: S tilts camera down (-1)")
+
+	# Profile wasd_mouse in helm: WASD drives boat, arrows ignored, keyboard camera axes stay 0 (mouse handles PoV)
+	var helm_wm := CameraController.map_control_inputs(CameraController.SCHEME_WASD_MOUSE, true, -1.0, 1.0, 1.0, -1.0, 0.0)
 	assert_almost_eq(float(helm_wm["throttle"]), 1.0, 0.001, "wasd_mouse helm: W controls throttle")
 	assert_almost_eq(float(helm_wm["steering"]), 1.0, 0.001, "wasd_mouse helm: A steers left (+1)")
-	assert_almost_eq(float(helm_wm["cam_yaw_axis"]), 0.0, 0.001, "wasd_mouse helm: WASD does not turn camera yaw")
-	assert_almost_eq(float(helm_wm["cam_pitch_axis"]), 0.0, 0.001, "wasd_mouse helm: WASD does not turn camera pitch")
+	assert_almost_eq(float(helm_wm["cam_yaw_axis"]), 0.0, 0.001, "wasd_mouse helm: keyboard does not turn camera yaw")
+	assert_almost_eq(float(helm_wm["cam_pitch_axis"]), 0.0, 0.001, "wasd_mouse helm: keyboard does not turn camera pitch")
 
-	# Deck mode: WASD walks screen-relative (yaw = PI -> W gives +Z), arrows turn camera
-	var deck_map := CameraController.map_control_inputs(CameraController.SCHEME_ARROWS_WASD, false, 0.0, 1.0, -1.0, -1.0, PI)
-	assert_almost_eq(float(deck_map["move_z"]), 1.0, 0.001, "Deck map projects W toward stern (+Z) when facing aft")
-	assert_almost_eq(float(deck_map["cam_yaw_axis"]), 1.0, 0.001, "Deck map: LEFT arrow turns camera left (+1)")
-	assert_almost_eq(float(deck_map["cam_pitch_axis"]), -1.0, 0.001, "Deck map: DOWN arrow tilts camera down (-1)")
+	# Profile wasd_mouse on deck: WASD STILL drives movement, keyboard camera axes stay 0 (keys never swap)
+	var deck_wm := CameraController.map_control_inputs(CameraController.SCHEME_WASD_MOUSE, false, 0.0, 1.0, -1.0, -1.0, PI)
+	assert_almost_eq(float(deck_wm["move_z"]), 1.0, 0.001, "wasd_mouse deck: W projects walk toward stern (+Z) when facing aft")
+	assert_almost_eq(float(deck_wm["move_x"]), 0.0, 0.001, "wasd_mouse deck: W produces zero lateral walk")
+	assert_almost_eq(float(deck_wm["cam_yaw_axis"]), 0.0, 0.001, "wasd_mouse deck: keyboard does not turn camera yaw")
+	assert_almost_eq(float(deck_wm["cam_pitch_axis"]), 0.0, 0.001, "wasd_mouse deck: keyboard does not turn camera pitch")
 
 	# Zoom clamping + mouse drag + helm distance lock
 	var ctrl := CameraController.new()
@@ -169,6 +177,8 @@ func test_camera_stays_client_local_and_updates_hud_controls() -> void:
 	assert_true(world.camera.position.distance_to(default_cam_pos) > 1.0, "Rotating local camera updates WorldView camera position")
 	assert_true(world.hud_label.text.contains("arrows_wasd"), "HUD displays active arrows_wasd control scheme")
 	assert_true(world.hud_label.text.contains("Reset: R"), "HUD displays R reset hint")
+	assert_true(world.hud_label.text.contains("Kävely: Nuolet"), "Deck HUD shows Arrows walk in arrows_wasd scheme")
+	assert_true(world.hud_label.text.contains("Kamera: WASD"), "Deck HUD shows WASD camera in arrows_wasd scheme")
 
 	# Switch to helm and cycle control profile to wasd_mouse
 	state.stations[StationConfig.HELM_STATION_ID] = 1
@@ -179,6 +189,12 @@ func test_camera_stays_client_local_and_updates_hud_controls() -> void:
 	world.camera_controller.cycle_control_scheme()
 	world.apply_game_state(state, "", 1, true)
 	assert_true(world.hud_label.text.contains("wasd_mouse"), "HUD updates when cycling to wasd_mouse scheme")
-	assert_true(world.hud_label.text.contains("Ajo: WASD/Nuolet"), "Helm HUD shows WASD/Arrows driving in wasd_mouse scheme")
+	assert_true(world.hud_label.text.contains("Ajo: WASD"), "Helm HUD shows WASD driving in wasd_mouse scheme")
+	assert_true(world.hud_label.text.contains("Kamera: Hiiri"), "Helm HUD shows Mouse camera in wasd_mouse scheme")
+
+	state.stations[StationConfig.HELM_STATION_ID] = 0
+	world.apply_game_state(state, "", 1, true)
+	assert_true(world.hud_label.text.contains("Kävely: WASD"), "Deck HUD shows WASD walk in wasd_mouse scheme")
+	assert_true(world.hud_label.text.contains("Kamera: Hiiri"), "Deck HUD shows Mouse camera in wasd_mouse scheme")
 
 	free_node(world)
