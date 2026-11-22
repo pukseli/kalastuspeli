@@ -14,6 +14,7 @@ var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
 var _rmb_dragging: bool = false
+var _quitting: bool = false
 
 
 func _ready() -> void:
@@ -38,6 +39,49 @@ func _ready() -> void:
 	world_view.debug_hud_enabled = env_config.debug_hud
 	world_view.camera_controller.set_control_scheme(CameraController.parse_control_scheme_from_args(cli_args))
 	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id(), true)
+
+
+static func is_quit_shortcut(event: InputEvent, alt_held: bool = false) -> bool:
+	if not (event is InputEventKey):
+		return false
+	var key_event := event as InputEventKey
+	if not key_event.pressed:
+		return false
+	if key_event.ctrl_pressed or key_event.meta_pressed:
+		return false
+	var is_f4 := (
+		key_event.keycode == KEY_F4
+		or key_event.physical_keycode == KEY_F4
+		or key_event.key_label == KEY_F4
+	)
+	if not is_f4:
+		return false
+	return key_event.alt_pressed or alt_held
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_request_quit()
+
+
+func _input(event: InputEvent) -> void:
+	var alt_held := Input.is_key_pressed(KEY_ALT) or Input.is_physical_key_pressed(KEY_ALT)
+	if is_quit_shortcut(event, alt_held):
+		if is_inside_tree():
+			var viewport := get_viewport()
+			if viewport != null:
+				viewport.set_input_as_handled()
+		_request_quit()
+
+
+func _request_quit() -> void:
+	if _quitting:
+		return
+	_quitting = true
+	if is_inside_tree():
+		var tree := get_tree()
+		if tree != null:
+			tree.quit()
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
