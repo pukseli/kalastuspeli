@@ -42,6 +42,8 @@ Pelissä käytetään **pikkuplaanaria** eli siimaan vavan ja vieheen väliin ki
 | `TANGLED` | Plaanarien tai veneen kyljen välinen kynnys rikkoutuu (`S12`) | Plaanari ei levittäydy; siima lukittuu sotkuun eikä vedä kaloja | Selvitys kannella → `STOWED` (tai uudelleenlaskuun `DEPLOYING`) |
 | `SNAGGED` | Plaanari tai viehe osuu esteeseen / karikkoon (`S16`) | Lukittuu `snag_world_position`-pisteeseen; siiman kireys nousee nopeasti veneen liikkuessa eteenpäin | Veneen pysäytys/peruutus ja irrotus → `DEPLOYING` / `STOWED`, tai siiman katkeaminen (`S11`) |
 
+> **Telineiden välinen siirto (`±2 ↔ ±1`):** Vedessä olevan vavan (`line_out > 0`) siirtäminen telineestä toiseen säilyttää `attached`-tilan ja käyttää uuden telineen `spread_angle_deg`-kulmaa (`±1`-perätelineessä `8°` tekee tilaa pujotukselle). Ylös kelatun (`STOWED`) vavan `attached` synkronoituu telineen `default_planer_attached`-oletukseen (kunnes `S10` lisää manuaalisen kiinnityksen/irrotuksen).
+
 ### 2.3 Konfiguraatioparametrit (`PlanerBoardConfig`, puhdas `RefCounted`)
 
 | Parametri | Oletusarvo | Yksikkö | Kuvaus |

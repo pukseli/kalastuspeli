@@ -300,3 +300,73 @@ func test_reeling_in_during_inner_turn_and_stopping_keeps_board_aft_of_rod_tip()
 			s_board.y > s_tip.z + 0.5 * s_rod.planer.line_out * s_eff,
 			"Stopping boat never snaps planer forward to 90 deg abeam (tick=%d)" % tick
 		)
+
+
+func test_holder_move_preserves_deployed_planer_and_syncs_stowed_default() -> void:
+	var state := GameState.new()
+	var rod_sim := RodSimulator.new()
+	var item_sim := ItemSimulator.new(state.item_config)
+	state.boat.forward_speed = 3.0
+	state.boat.velocity = Vector2(0.0, -3.0)
+	state.boat.angular_velocity = 0.0
+
+	var p1 := state.ensure_player(1)
+	var interact_in := PlayerInput.new()
+	interact_in.interact = true
+
+	var item_r2 := state.get_holder_item("rod_+2")
+	var item_r1 := state.get_holder_item("rod_+1")
+	var rod_r2 := state.get_rod_state(item_r2.id)
+	var rod_r1 := state.get_rod_state(item_r1.id)
+	assert_true(rod_r2.planer.attached, "rod_+2 starts with planer attached")
+	assert_true(not rod_r1.planer.attached, "rod_+1 starts without planer attached")
+
+	# 1. Deploy rod_+2 to 15.0 m -> reaches TROLLING wide on starboard side
+	rod_r2.planer.line_out = 15.0
+	rod_r2.planer.state = PlanerBoard.STATE_DEPLOYING
+	rod_r2.trail_factor = 1.0
+	for _i in range(360):
+		rod_sim.step(state, {}, RodSimulator.FIXED_DELTA)
+	assert_eq(rod_r2.planer.state, PlanerBoard.STATE_TROLLING, "rod_+2 reaches TROLLING")
+	assert_true(rod_r2.planer.lateral_offset > 6.0, "rod_+2 spreads > 6.0 m before holder move")
+
+	# 2. Pick up deployed rod from +2, swap into +1, and place dry former-+1 rod into +2
+	p1.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_true(state.get_player_held_item(1) == item_r2, "Player picks up deployed rod_+2")
+
+	p1.local_position = Vector3(0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_eq(item_r2.holder_id, "rod_+1", "Deployed rod is placed into stern holder +1")
+	assert_true(state.get_player_held_item(1) == item_r1, "Player receives stowed former-+1 rod from swap")
+
+	p1.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_eq(item_r1.holder_id, "rod_+2", "Stowed rod is placed into side holder +2")
+
+	for _i in range(360):
+		rod_sim.step(state, {}, RodSimulator.FIXED_DELTA)
+
+	assert_true(rod_r2.planer.attached, "Deployed rod moved to +1 keeps planer attached while in water")
+	assert_true(
+		rod_r2.planer.lateral_offset > 1.5 and rod_r2.planer.lateral_offset < 3.0,
+		"Planer in +1 narrows toward 8 deg (~2.09 m), was %.2f" % rod_r2.planer.lateral_offset
+	)
+	assert_true(rod_r1.planer.attached, "Stowed former-+1 rod moved into +2 automatically attaches planer")
+
+	# 3. Reel deployed rod in +1 all the way to 0.0 m -> syncs to +1 default (no planer)
+	p1.local_position = Vector3(0.95, CrewSimulator.DECK_SURFACE_Y, 3.0)
+	var reel_in := PlayerInput.new()
+	reel_in.line_input = -1.0
+	for _i in range(130):
+		rod_sim.step(state, {1: reel_in}, RodSimulator.FIXED_DELTA)
+	assert_eq(rod_r2.planer.state, PlanerBoard.STATE_STOWED, "Fully reeled rod enters STOWED")
+	assert_true(not rod_r2.planer.attached, "Once stowed in +1, planer attachment syncs to +1 default (false)")
+
+	# 4. Move stowed rod back to +2 -> automatically re-attaches planer
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	p1.local_position = Vector3(1.3, CrewSimulator.DECK_SURFACE_Y, 2.1)
+	item_sim.step(state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_eq(item_r2.holder_id, "rod_+2", "Stowed rod swapped back to +2")
+	rod_sim.step(state, {}, RodSimulator.FIXED_DELTA)
+	assert_true(rod_r2.planer.attached, "Stowed rod moved back to +2 automatically restores planer attachment")

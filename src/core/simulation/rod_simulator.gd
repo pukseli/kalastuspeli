@@ -196,6 +196,8 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 		rod.planer.state = PlanerBoard.STATE_STOWED
 		rod.trail_factor = 0.0
 		rod.trail_angle = 0.0
+		if not item.is_carried() and not holder_cfg.is_empty():
+			rod.planer.attached = bool(holder_cfg.get("default_planer_attached", false))
 		return
 
 	if rod.trail_factor <= 0.001:
