@@ -138,3 +138,88 @@ func test_obstacle_collision_triggers_snagged_state() -> void:
 		state.boat.world_position.z -= state.boat.forward_speed * RodSimulator.FIXED_DELTA
 		rod_sim.step(state, {}, RodSimulator.FIXED_DELTA, obstacles)
 	assert_almost_eq(rod_sim.get_board_world_pos_2d(state, item, rod).distance_to(locked_pos), 0.0, 0.001, "SNAGGED planer remains anchored in world space")
+
+
+func test_short_deploy_put_down_redeploy_and_stopped_clearance() -> void:
+	# Part 1: Stationary boat (v_fwd = 0): deploy 0 -> 4m, reel 4 -> 2m, re-deploy 2 -> 8m
+	var stopped_state := GameState.new()
+	var rod_sim := RodSimulator.new()
+	var item_sim := ItemSimulator.new(stopped_state.item_config)
+	var p1 := stopped_state.ensure_player(1)
+	p1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
+
+	var rod_item := stopped_state.get_holder_item("rod_-3")
+	var rod := stopped_state.get_rod_state(rod_item.id)
+	var out_in := PlayerInput.new()
+	out_in.line_input = 1.0
+	var reel_in := PlayerInput.new()
+	reel_in.line_input = -1.0
+	var interact_in := PlayerInput.new()
+	interact_in.interact = true
+
+	for _i in range(30):
+		rod_sim.step(stopped_state, {1: out_in}, RodSimulator.FIXED_DELTA)
+	assert_almost_eq(rod.planer.line_out, 4.0, 0.05, "Stopped boat deploys rod_-3 to 4.0 m")
+	assert_true(rod.planer.state != PlanerBoard.STATE_TANGLED, "Stopped short deploy must not trigger TANGLED")
+	var pos_at_4m := rod_sim.get_board_world_pos_2d(stopped_state, rod_item, rod)
+	assert_true(absf(pos_at_4m.x) > 1.8, "Stopped planer spawns clear outside boat hull")
+
+	for _i in range(15):
+		rod_sim.step(stopped_state, {1: reel_in}, RodSimulator.FIXED_DELTA)
+	assert_almost_eq(rod.planer.line_out, 2.0, 0.05, "Stopped boat reels rod_-3 back to 2.0 m")
+	var pos_at_2m := rod_sim.get_board_world_pos_2d(stopped_state, rod_item, rod)
+	assert_true(pos_at_2m.y < pos_at_4m.y, "Reeling moves stopped planer forward toward rod tip")
+
+	for _i in range(45):
+		rod_sim.step(stopped_state, {1: out_in}, RodSimulator.FIXED_DELTA)
+	assert_almost_eq(rod.planer.line_out, 8.0, 0.05, "Stopped boat re-deploys rod_-3 from 2.0 m to 8.0 m without full reel-in")
+	assert_true(rod.planer.state != PlanerBoard.STATE_TANGLED, "Re-deploy while stopped never locks in TANGLED")
+	var pos_at_8m := rod_sim.get_board_world_pos_2d(stopped_state, rod_item, rod)
+	assert_true(pos_at_8m.y > pos_at_4m.y, "Deploying further moves stopped planer farther aft")
+
+	# Part 2: Cruising (3.0 m/s): pick up rod, deploy short (3.0m), put down into holder, re-deploy to 10m
+	var cruise_state := GameState.new()
+	cruise_state.boat.forward_speed = 3.0
+	cruise_state.boat.velocity = Vector2(0.0, -3.0)
+	var cp1 := cruise_state.ensure_player(1)
+	cp1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
+
+	var c_rod_item := cruise_state.get_holder_item("rod_-3")
+	var c_rod := cruise_state.get_rod_state(c_rod_item.id)
+	item_sim.step(cruise_state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_true(cruise_state.get_player_held_item(1) == c_rod_item, "Player picks up rod_-3")
+
+	for _i in range(23):
+		rod_sim.step(cruise_state, {1: out_in}, RodSimulator.FIXED_DELTA)
+	assert_true(c_rod.planer.line_out > 2.5 and c_rod.planer.line_out < 3.5, "Short deploy in hand ~3.0 m")
+	assert_true(c_rod.planer.state != PlanerBoard.STATE_TANGLED, "Short deploy in hand stays untangled")
+	var held_board_pos := rod_sim.get_board_world_pos_2d(cruise_state, c_rod_item, c_rod)
+	assert_true(absf(held_board_pos.x) > 1.8, "Held rod planer stays clear outside boat hull")
+
+	# Put rod back down into rod_-3 and immediately re-deploy further
+	item_sim.step(cruise_state, {1: interact_in}, ItemSimulator.FIXED_DELTA)
+	assert_true(cruise_state.get_player_held_item(1) == null, "Player puts rod_-3 back into holder")
+	var line_after_place := c_rod.planer.line_out
+	for _i in range(52):
+		rod_sim.step(cruise_state, {1: out_in}, RodSimulator.FIXED_DELTA)
+	assert_true(c_rod.planer.line_out > line_after_place + 6.0, "Can immediately re-deploy after putting short-deployed rod down")
+	assert_true(c_rod.planer.state != PlanerBoard.STATE_TANGLED, "Re-deploying after placing rod stays untangled")
+
+	# Deploy rod_-2 first (10 m), then deploy rod_-3 (0 -> 10 m) straight -> must NOT false tangle
+	var rod_l2 := cruise_state.get_rod_state(cruise_state.get_holder_item("rod_-2").id)
+	rod_l2.planer.line_out = 10.0
+	rod_l2.planer.state = PlanerBoard.STATE_DEPLOYING
+	for _i in range(180):
+		rod_sim.step(cruise_state, {}, RodSimulator.FIXED_DELTA)
+	assert_eq(rod_l2.planer.state, PlanerBoard.STATE_TROLLING, "rod_-2 reaches TROLLING first")
+
+	c_rod.planer.line_out = 0.0
+	c_rod.planer.lateral_offset = 0.0
+	c_rod.planer.state = PlanerBoard.STATE_STOWED
+	cp1.local_position = Vector3(-1.3, CrewSimulator.DECK_SURFACE_Y, 0.8)
+	for _i in range(75):
+		rod_sim.step(cruise_state, {1: out_in}, RodSimulator.FIXED_DELTA)
+	for _i in range(180):
+		rod_sim.step(cruise_state, {}, RodSimulator.FIXED_DELTA)
+	assert_eq(c_rod.planer.state, PlanerBoard.STATE_TROLLING, "Deploying rod_-3 after rod_-2 reaches TROLLING without false tangle")
+	assert_eq(rod_l2.planer.state, PlanerBoard.STATE_TROLLING, "rod_-2 remains TROLLING when rod_-3 deploys next to it")

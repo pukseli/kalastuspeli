@@ -140,12 +140,14 @@ func _read_local_input() -> void:
 	player_input.throttle = float(mapped["throttle"])
 	player_input.steering = float(mapped["steering"])
 
-	var line_in := 0.0
-	if Input.is_physical_key_pressed(KEY_Q) or Input.is_physical_key_pressed(KEY_SHIFT):
-		line_in += 1.0
-	if Input.is_physical_key_pressed(KEY_SPACE):
-		line_in -= 1.0
-	player_input.line_input = clampf(line_in, -1.0, 1.0)
+	var let_out := (
+		Input.is_physical_key_pressed(KEY_Q)
+		or Input.is_key_pressed(KEY_Q)
+		or Input.is_physical_key_pressed(KEY_SHIFT)
+		or Input.is_key_pressed(KEY_SHIFT)
+	)
+	var reel_in := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_SPACE)
+	player_input.line_input = (1.0 if let_out else 0.0) - (1.0 if reel_in else 0.0)
 
 	world_view.camera_controller.apply_axes(
 		float(mapped["cam_yaw_axis"]),

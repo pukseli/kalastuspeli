@@ -263,22 +263,48 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 		var active_rod_item: HeldItem = null
 		if held_item != null and held_item.item_type == ItemConfig.ITEM_TYPE_ROD:
 			active_rod_item = held_item
-		elif not best_hid.is_empty():
-			var nearby_item := game_state.get_holder_item(best_hid)
-			if nearby_item != null and nearby_item.item_type == ItemConfig.ITEM_TYPE_ROD:
-				active_rod_item = nearby_item
+		elif game_state.item_config != null:
+			var best_rod_dist := INF
+			for holder in game_state.item_config.holders:
+				var hid := str(holder.get("id", ""))
+				if hid.is_empty():
+					continue
+				var nearby_item := game_state.get_holder_item(hid)
+				if nearby_item == null or nearby_item.item_type != ItemConfig.ITEM_TYPE_ROD:
+					continue
+				var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
+				var radius := float(holder.get("radius", ItemConfig.DEFAULT_HOLDER_RADIUS))
+				var dx := lp.local_position.x - pos.x
+				var dz := lp.local_position.z - pos.z
+				var dist := sqrt(dx * dx + dz * dz)
+				if dist <= radius and dist < best_rod_dist:
+					best_rod_dist = dist
+					active_rod_item = nearby_item
 
 		if active_rod_item != null:
 			var active_rod := game_state.get_rod_state(active_rod_item.id)
 			if active_rod != null:
 				var rod_name := _format_held_item_label(active_rod_item)
 				var planer_tag := " (Plaanari)" if active_rod.planer.attached else ""
-				line_prompt = "[Q/Shift] Laske | [Space] Kelaa | %s%s: %.1f m [%s]" % [
-					rod_name,
-					planer_tag,
-					active_rod.planer.line_out,
-					active_rod.planer.state,
-				]
+				if active_rod.planer.state == PlanerBoard.STATE_TANGLED:
+					line_prompt = "[SOTKU] Kelaa ylös [Space] (0 m) | %s%s: %.1f m [TANGLED]" % [
+						rod_name,
+						planer_tag,
+						active_rod.planer.line_out,
+					]
+				elif active_rod.planer.state == PlanerBoard.STATE_SNAGGED:
+					line_prompt = "[KIINNI] Kelaa ylös [Space] (0 m) | %s%s: %.1f m [SNAGGED]" % [
+						rod_name,
+						planer_tag,
+						active_rod.planer.line_out,
+					]
+				else:
+					line_prompt = "[Q/Shift] Laske | [Space] Kelaa | %s%s: %.1f m [%s]" % [
+						rod_name,
+						planer_tag,
+						active_rod.planer.line_out,
+						active_rod.planer.state,
+					]
 
 	_update_camera_and_hud(
 		game_state.boat,

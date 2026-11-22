@@ -22,13 +22,13 @@ class Config extends RefCounted:
 	var tripped_pull_factor: float = 0.15
 	var board_tangle_distance: float = 1.5
 	var hull_tangle_margin: float = 1.2
-	var sharp_turn_omega: float = 0.35
+	var sharp_turn_omega: float = 0.45
 	var board_collision_radius: float = 0.45
 	var lure_collision_radius: float = 0.25
 	var detach_distance: float = 2.0
 	var quiet_water_offset: float = 4.0
 	var quiet_water_bite_bonus: float = 1.2
-	var min_stopped_trail_factor: float = 0.18
+	var min_stopped_trail_factor: float = 0.35
 	var full_straighten_speed: float = 2.0
 	var trail_factor_rate: float = 1.5
 	var straight_align_gain: float = 2.4
@@ -199,7 +199,9 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 	if rod.planer.attached:
 		if rod.planer.state == PlanerBoard.STATE_TANGLED or rod.planer.state == PlanerBoard.STATE_SNAGGED:
 			return
-		var v_board := state.boat.forward_speed + state.boat.angular_velocity * rod.planer.lateral_offset
+		var tip_local := get_rod_tip_local(state, item)
+		var board_x := tip_local.x + rod.planer.lateral_offset
+		var v_board := state.boat.forward_speed + state.boat.angular_velocity * board_x
 		if v_board >= config.min_pull_speed:
 			var p_base := clampf(
 				(v_board - config.min_pull_speed) / maxf(0.01, config.optimal_pull_speed - config.min_pull_speed),
@@ -256,7 +258,9 @@ func _check_planer_tangles(
 		if rod.planer.line_out <= config.detach_distance:
 			continue
 
-		var v_board := state.boat.forward_speed + omega * rod.planer.lateral_offset
+		var tip_local := get_rod_tip_local(state, item)
+		var board_x := tip_local.x + rod.planer.lateral_offset
+		var v_board := state.boat.forward_speed + omega * board_x
 		var had_spread := float(prev_abs_lat.get(rid, 0.0)) >= config.hull_tangle_margin
 		if sharp_turn and v_board < config.min_pull_speed and absf(rod.planer.lateral_offset) < config.hull_tangle_margin and had_spread:
 			rod.planer.state = PlanerBoard.STATE_TANGLED
@@ -283,7 +287,7 @@ func _check_planer_tangles(
 			var tip_b := b["tip"] as Vector2
 
 			var crosses := false
-			if absf(rod_a.planer.lateral_offset) >= 0.5 and absf(rod_b.planer.lateral_offset) >= 0.5:
+			if sharp_turn and absf(rod_a.planer.lateral_offset) >= 1.5 and absf(rod_b.planer.lateral_offset) >= 1.5:
 				crosses = Geometry2D.segment_intersects_segment(tip_a, pos_a, tip_b, pos_b) != null
 
 			var dist := pos_a.distance_to(pos_b)
@@ -294,25 +298,19 @@ func _check_planer_tangles(
 				var prev_dist := (prev_board_pos[rid_a] as Vector2).distance_to(prev_board_pos[rid_b] as Vector2)
 				approaching = dist < prev_dist - 0.0001
 
-			var was_deployed_out := (
-				rod_a.planer.state == PlanerBoard.STATE_TROLLING
-				or rod_b.planer.state == PlanerBoard.STATE_TROLLING
-				or float(a["prev_abs_lat"]) >= 3.0
-				or float(b["prev_abs_lat"]) >= 3.0
-			)
 			var both_trolling := (
 				rod_a.planer.state == PlanerBoard.STATE_TROLLING
 				and rod_b.planer.state == PlanerBoard.STATE_TROLLING
 			)
-			var v_board_a := state.boat.forward_speed + omega * rod_a.planer.lateral_offset
-			var v_board_b := state.boat.forward_speed + omega * rod_b.planer.lateral_offset
-			var either_stalled := v_board_a < config.min_pull_speed or v_board_b < config.min_pull_speed
-			var allow_cross_tangle := (
-				(sharp_turn or both_trolling or either_stalled)
-				and absf(rod_a.planer.lateral_offset) >= 1.5
-				and absf(rod_b.planer.lateral_offset) >= 1.5
+			var either_spread := (
+				absf(rod_a.planer.lateral_offset) >= config.hull_tangle_margin
+				or absf(rod_b.planer.lateral_offset) >= config.hull_tangle_margin
+				or float(a["prev_abs_lat"]) >= config.hull_tangle_margin
+				or float(b["prev_abs_lat"]) >= config.hull_tangle_margin
 			)
-			if (allow_cross_tangle and crosses) or (dist <= config.board_tangle_distance and (sharp_turn or (was_deployed_out and approaching))):
+			var hit_by_turn := sharp_turn and either_spread and (dist <= config.board_tangle_distance or crosses)
+			var hit_by_approach := both_trolling and dist <= config.board_tangle_distance and approaching
+			if hit_by_turn or hit_by_approach:
 				rod_a.planer.state = PlanerBoard.STATE_TANGLED
 				rod_b.planer.state = PlanerBoard.STATE_TANGLED
 
@@ -386,10 +384,14 @@ func get_board_local_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> 
 	if rod == null:
 		return Vector2.ZERO
 	var tip_local := get_rod_tip_local(state, item)
-	var dx := rod.planer.lateral_offset - tip_local.x
-	var eff_out := rod.planer.line_out * rod.trail_factor
+	var eff_out := rod.planer.line_out * (maxf(rod.trail_factor, config.min_stopped_trail_factor) if rod.is_deployed() else 0.0)
+	var dx := clampf(rod.planer.lateral_offset, -eff_out, eff_out)
 	var trail_z := sqrt(maxf(0.0, eff_out * eff_out - dx * dx))
-	return Vector2(rod.planer.lateral_offset, tip_local.z + trail_z)
+	var bx := tip_local.x + dx
+	var bz := tip_local.z + trail_z
+	if item != null and item.is_carried() and rod.is_deployed() and absf(bx) < 1.9 and bz < 3.8:
+		bx = float(rod.planer.side) * 2.0
+	return Vector2(bx, bz)
 
 
 func get_board_world_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> Vector2:
