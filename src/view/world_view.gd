@@ -390,15 +390,19 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 
 		var tip_world := _rod_simulator_helper.get_rod_tip_world(game_state, item)
 		var lure_2d := _rod_simulator_helper.get_lure_world_pos_2d(game_state, item, rod)
-		var lure_world := Vector3(lure_2d.x, WATER_Y + 0.02, lure_2d.y)
+		var lure_world := Vector3(lure_2d.x, WATER_Y + 0.05, lure_2d.y)
 		active_lures[str(rid)] = {"pos": lure_world, "color_index": item.color_index}
 
 		if rod.planer.attached:
 			var board_2d := _rod_simulator_helper.get_board_world_pos_2d(game_state, item, rod)
-			var board_world := Vector3(board_2d.x, WATER_Y + 0.04, board_2d.y)
-			active_planers[str(rid)] = {"pos": board_world, "state": rod.planer.state}
+			var board_world := Vector3(board_2d.x, WATER_Y + 0.05, board_2d.y)
+			active_planers[str(rid)] = {
+				"pos": board_world,
+				"state": rod.planer.state,
+				"yaw": game_state.boat.heading + rod.trail_angle,
+			}
 			_append_curved_segment(line_vertices, tip_world, board_world, 3, 0.22)
-			_append_curved_segment(line_vertices, board_world, lure_world, 2, 0.05)
+			_append_curved_segment(line_vertices, board_world, lure_world, 2, 0.0)
 		else:
 			_append_curved_segment(line_vertices, tip_world, lure_world, 4, 0.30)
 
@@ -424,7 +428,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			planers_container.add_child(p_node)
 			_planer_views[rid] = p_node
 		p_node.position = p_info["pos"]
-		p_node.rotation = Vector3(0.0, game_state.boat.heading, 0.0)
+		p_node.rotation = Vector3(0.0, float(p_info["yaw"]), 0.0)
 		_update_planer_visual_state(p_node, str(p_info["state"]))
 
 	for existing_lid in _lure_views.keys():
@@ -457,6 +461,7 @@ func _append_curved_segment(out: Array[Vector3], start_pos: Vector3, end_pos: Ve
 		var frac := float(i) / float(count)
 		var pt := start_pos.lerp(end_pos, frac)
 		pt.y -= sin(frac * PI) * sag
+		pt.y = maxf(pt.y, WATER_Y + 0.03)
 		out.append(prev)
 		out.append(pt)
 		prev = pt

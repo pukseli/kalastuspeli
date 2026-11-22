@@ -223,3 +223,80 @@ func test_short_deploy_put_down_redeploy_and_stopped_clearance() -> void:
 		rod_sim.step(cruise_state, {}, RodSimulator.FIXED_DELTA)
 	assert_eq(c_rod.planer.state, PlanerBoard.STATE_TROLLING, "Deploying rod_-3 after rod_-2 reaches TROLLING without false tangle")
 	assert_eq(rod_l2.planer.state, PlanerBoard.STATE_TROLLING, "rod_-2 remains TROLLING when rod_-3 deploys next to it")
+
+
+func test_reeling_in_during_inner_turn_and_stopping_keeps_board_aft_of_rod_tip() -> void:
+	# Scenario A (right turn, starboard rod_+2 deployed to 20 m and reeled in while player stands near +2)
+	var state := GameState.new()
+	var rod_sim := RodSimulator.new()
+	state.boat.heading = 0.0
+	state.boat.forward_speed = 5.73
+	state.boat.velocity = Vector2(0.0, -5.73)
+	state.boat.angular_velocity = -0.25
+
+	var p1 := state.ensure_player(1)
+	p1.local_position = Vector3(1.2, CrewSimulator.DECK_SURFACE_Y, 2.1)
+
+	var item := state.get_holder_item("rod_+2")
+	var rod := state.get_rod_state(item.id)
+	rod.planer.attached = true
+	rod.planer.line_out = 20.0
+	rod.planer.state = PlanerBoard.STATE_DEPLOYING
+	rod.trail_factor = 1.0
+
+	for _i in range(360):
+		rod_sim.step(state, {}, RodSimulator.FIXED_DELTA)
+	assert_eq(rod.planer.state, PlanerBoard.STATE_TROLLING, "Starboard rod_+2 reaches TROLLING before reel-in")
+
+	var reel_in := PlayerInput.new()
+	reel_in.line_input = -1.0
+	var checked_at_3_9 := false
+	for tick in range(143):
+		rod_sim.step(state, {1: reel_in}, RodSimulator.FIXED_DELTA)
+		if rod.planer.line_out > 0.5:
+			var tip_local := rod_sim.get_rod_tip_local(state, item)
+			var board_local := rod_sim.get_board_local_pos_2d(state, item, rod)
+			var eff_factor := maxf(rod.trail_factor, rod_sim.config.min_stopped_trail_factor)
+			assert_true(
+				board_local.y > tip_local.z + 0.5 * rod.planer.line_out * eff_factor,
+				"Reeling inner-turn planer keeps board aft of rod tip (tick=%d, line=%.2f)" % [tick, rod.planer.line_out]
+			)
+			assert_true(
+				absf(rod.planer.lateral_offset) <= rod.planer.line_out * sin(deg_to_rad(rod_sim.config.max_spread_angle_deg)) + 0.02,
+				"lateral_offset remains bounded by max spread geometry while reeling"
+			)
+			assert_true(rod.planer.state != PlanerBoard.STATE_TANGLED, "Actively reeling inner-turn rod does not false-tangle")
+		if tick == 120:
+			checked_at_3_9 = true
+			var board_local_3_9 := rod_sim.get_board_local_pos_2d(state, item, rod)
+			assert_almost_eq(rod.planer.line_out, 3.867, 0.1, "121 ticks of reeling reaches ~3.9 m")
+			assert_true(board_local_3_9.y > 3.6, "At ~3.9 m line_out, board stays aft of stern z=3.6 (was %.2f)" % board_local_3_9.y)
+			assert_true(rod.trail_angle > 0.0, "Right turn builds positive trailing leader angle (%.3f)" % rod.trail_angle)
+
+	assert_true(checked_at_3_9, "Verified snapshot at ~3.9 m during reel-in")
+
+	# Scenario B (boat stopping from 3.0 m/s cruise never snaps board forward to trail_z = 0)
+	var stop_state := GameState.new()
+	stop_state.boat.forward_speed = 3.0
+	stop_state.boat.velocity = Vector2(0.0, -3.0)
+	var s_item := stop_state.get_holder_item("rod_+3")
+	var s_rod := stop_state.get_rod_state(s_item.id)
+	s_rod.planer.attached = true
+	s_rod.planer.line_out = 20.0
+	s_rod.planer.state = PlanerBoard.STATE_DEPLOYING
+	s_rod.trail_factor = 1.0
+	for _i in range(360):
+		rod_sim.step(stop_state, {}, RodSimulator.FIXED_DELTA)
+	assert_eq(s_rod.planer.state, PlanerBoard.STATE_TROLLING, "rod_+3 reaches TROLLING before stop")
+
+	stop_state.boat.forward_speed = 0.0
+	stop_state.boat.velocity = Vector2.ZERO
+	for tick in range(90):
+		rod_sim.step(stop_state, {}, RodSimulator.FIXED_DELTA)
+		var s_tip := rod_sim.get_rod_tip_local(stop_state, s_item)
+		var s_board := rod_sim.get_board_local_pos_2d(stop_state, s_item, s_rod)
+		var s_eff := maxf(s_rod.trail_factor, rod_sim.config.min_stopped_trail_factor)
+		assert_true(
+			s_board.y > s_tip.z + 0.5 * s_rod.planer.line_out * s_eff,
+			"Stopping boat never snaps planer forward to 90 deg abeam (tick=%d)" % tick
+		)

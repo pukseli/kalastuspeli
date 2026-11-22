@@ -33,6 +33,8 @@ class Config extends RefCounted:
 	var trail_factor_rate: float = 1.5
 	var straight_align_gain: float = 2.4
 	var min_eff_length_for_lag: float = 4.0
+	var reel_pull_factor: float = 0.45
+	var reel_inward_rate: float = 4.0
 
 var config: Config = Config.new()
 
@@ -72,7 +74,7 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA, obst
 	if state == null:
 		return
 	state.sync_rods_with_items()
-	_process_line_inputs(state, inputs, delta)
+	var reeling_rods := _process_line_inputs(state, inputs, delta)
 
 	var prev_board_pos: Dictionary = {}
 	var prev_abs_lat: Dictionary = {}
@@ -95,14 +97,14 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA, obst
 		var rod := state.get_rod_state(rid)
 		if item == null or rod == null:
 			continue
-		_step_single_rod(state, item, rod, delta)
+		_step_single_rod(state, item, rod, delta, reeling_rods.has(rid))
 
-	_check_planer_tangles(state, rod_ids, prev_board_pos, prev_abs_lat)
+	_check_planer_tangles(state, rod_ids, prev_board_pos, prev_abs_lat, reeling_rods)
 	if not obstacles.is_empty():
 		_check_obstacles(state, rod_ids, obstacles)
 
 
-func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) -> void:
+func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) -> Dictionary:
 	var active_cfg: ItemConfig = state.item_config
 	var pids: Array[int] = []
 	for pid_raw in inputs.keys():
@@ -112,6 +114,7 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 	pids.sort()
 
 	var touched_rods: Dictionary = {}
+	var reeling_rods: Dictionary = {}
 
 	for pid in pids:
 		if not state.players.has(pid):
@@ -161,6 +164,9 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 		var prev_line := rod.planer.line_out
 		var next_line := clampf(prev_line + line_in * config.line_adjust_speed * delta, 0.0, config.max_line_out)
 		rod.planer.line_out = next_line
+		if next_line > 0.001 and next_line < prev_line and prev_line > 0.001:
+			rod.planer.lateral_offset *= (next_line / prev_line)
+			reeling_rods[target_item.id] = true
 
 		if next_line <= 0.001:
 			rod.planer.line_out = 0.0
@@ -174,8 +180,10 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 			if rod.planer.state == PlanerBoard.STATE_STOWED:
 				rod.planer.state = PlanerBoard.STATE_DEPLOYING
 
+	return reeling_rods
 
-func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: float) -> void:
+
+func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: float, is_reeling: bool = false) -> void:
 	var holder_cfg := _get_rod_holder_cfg(state, item)
 	if not item.is_carried() and not holder_cfg.is_empty():
 		rod.planer.side = PlanerBoard.SIDE_LEFT if int(holder_cfg.get("side", 1)) < 0 else PlanerBoard.SIDE_RIGHT
@@ -199,6 +207,8 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 	if rod.planer.attached:
 		if rod.planer.state == PlanerBoard.STATE_TANGLED or rod.planer.state == PlanerBoard.STATE_SNAGGED:
 			return
+		var l_max_hard := minf(config.max_lateral_offset, rod.planer.line_out * sin(deg_to_rad(config.max_spread_angle_deg)))
+		rod.planer.lateral_offset = clampf(rod.planer.lateral_offset, -l_max_hard, l_max_hard)
 		var tip_local := get_rod_tip_local(state, item)
 		var board_x := tip_local.x + rod.planer.lateral_offset
 		var v_board := state.boat.forward_speed + state.boat.angular_velocity * board_x
@@ -209,23 +219,34 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 				1.0
 			)
 			var pull := p_base * config.tripped_pull_factor if rod.planer.state == PlanerBoard.STATE_TRIPPED else p_base
+			if is_reeling:
+				pull *= config.reel_pull_factor
 			var rod_max_angle_deg := minf(config.max_spread_angle_deg, absf(spread_deg))
 			var l_max := minf(config.max_lateral_offset, rod.planer.line_out * sin(deg_to_rad(rod_max_angle_deg)))
 			var x_target := float(rod.planer.side) * pull * l_max
 			var max_sin := maxf(0.01, sin(deg_to_rad(config.max_spread_angle_deg)))
 			var angle_ratio := clampf(sin(deg_to_rad(rod_max_angle_deg)) / max_sin, 0.45, 1.0)
 			var step_rate := config.spread_rate * maxf(pull, 0.25) * angle_ratio
+			if is_reeling and absf(x_target) < absf(rod.planer.lateral_offset):
+				step_rate = maxf(step_rate, config.reel_inward_rate)
 			rod.planer.lateral_offset = move_toward(rod.planer.lateral_offset, x_target, step_rate * delta)
 			if rod.planer.state != PlanerBoard.STATE_TRIPPED:
-				if absf(rod.planer.lateral_offset - x_target) < 0.25 and pull > 0.0:
+				if not is_reeling and absf(rod.planer.lateral_offset - x_target) < 0.25 and pull > 0.0:
 					rod.planer.state = PlanerBoard.STATE_TROLLING
 				else:
 					rod.planer.state = PlanerBoard.STATE_DEPLOYING
 		else:
 			var collapse_v := config.collapse_rate + (config.min_pull_speed - v_board) * config.stall_collapse_gain
+			if is_reeling:
+				collapse_v = maxf(collapse_v, config.reel_inward_rate)
 			rod.planer.lateral_offset = move_toward(rod.planer.lateral_offset, 0.0, collapse_v * delta)
 			if rod.planer.state != PlanerBoard.STATE_TRIPPED:
 				rod.planer.state = PlanerBoard.STATE_DEPLOYING
+		rod.planer.lateral_offset = clampf(rod.planer.lateral_offset, -l_max_hard, l_max_hard)
+		var leader_eff_len := maxf(config.min_eff_length_for_lag, config.leader_length * maxf(rod.trail_factor, config.min_stopped_trail_factor))
+		var leader_align_rate := (maxf(0.0, v_board) * config.straight_align_gain) / leader_eff_len
+		rod.trail_angle = wrapf(rod.trail_angle - state.boat.angular_velocity * delta, -PI, PI)
+		rod.trail_angle = wrapf(lerp_angle(rod.trail_angle, 0.0, clampf(leader_align_rate * delta, 0.0, 1.0)), -PI, PI)
 	else:
 		if rod.planer.state == PlanerBoard.STATE_TANGLED or rod.planer.state == PlanerBoard.STATE_SNAGGED:
 			return
@@ -242,7 +263,8 @@ func _check_planer_tangles(
 	state: GameState,
 	rod_ids: Array[String],
 	prev_board_pos: Dictionary,
-	prev_abs_lat: Dictionary
+	prev_abs_lat: Dictionary,
+	reeling_rods: Dictionary = {}
 ) -> void:
 	var active_entries: Array[Dictionary] = []
 	var omega := state.boat.angular_velocity
@@ -262,7 +284,7 @@ func _check_planer_tangles(
 		var board_x := tip_local.x + rod.planer.lateral_offset
 		var v_board := state.boat.forward_speed + omega * board_x
 		var had_spread := float(prev_abs_lat.get(rid, 0.0)) >= config.hull_tangle_margin
-		if sharp_turn and v_board < config.min_pull_speed and absf(rod.planer.lateral_offset) < config.hull_tangle_margin and had_spread:
+		if sharp_turn and v_board < config.min_pull_speed and absf(rod.planer.lateral_offset) < config.hull_tangle_margin and had_spread and not reeling_rods.has(rid):
 			rod.planer.state = PlanerBoard.STATE_TANGLED
 			continue
 
@@ -384,8 +406,10 @@ func get_board_local_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> 
 	if rod == null:
 		return Vector2.ZERO
 	var tip_local := get_rod_tip_local(state, item)
-	var eff_out := rod.planer.line_out * (maxf(rod.trail_factor, config.min_stopped_trail_factor) if rod.is_deployed() else 0.0)
-	var dx := clampf(rod.planer.lateral_offset, -eff_out, eff_out)
+	var eff_factor := maxf(rod.trail_factor, config.min_stopped_trail_factor) if rod.is_deployed() else 0.0
+	var eff_out := rod.planer.line_out * eff_factor
+	var max_dx := eff_out * sin(deg_to_rad(config.max_spread_angle_deg))
+	var dx := clampf(rod.planer.lateral_offset * eff_factor, -max_dx, max_dx)
 	var trail_z := sqrt(maxf(0.0, eff_out * eff_out - dx * dx))
 	var bx := tip_local.x + dx
 	var bz := tip_local.z + trail_z
@@ -407,10 +431,13 @@ func get_board_world_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> 
 func get_lure_world_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> Vector2:
 	if rod == null or state == null:
 		return Vector2.ZERO
-	var stern_dir := Vector2(sin(state.boat.heading), cos(state.boat.heading))
 	if rod.planer.attached:
 		var board_world := get_board_world_pos_2d(state, item, rod)
-		return board_world + stern_dir * (config.leader_length * rod.trail_factor)
+		var eff_factor := maxf(rod.trail_factor, config.min_stopped_trail_factor) if rod.is_deployed() else 0.0
+		var leader_eff := config.leader_length * eff_factor
+		var leader_local := Vector3(sin(rod.trail_angle) * leader_eff, 0.0, cos(rod.trail_angle) * leader_eff)
+		var leader_world := leader_local.rotated(Vector3.UP, state.boat.heading)
+		return board_world + Vector2(leader_world.x, leader_world.z)
 	var tip_local := get_rod_tip_local(state, item)
 	var dist := rod.planer.line_out * rod.trail_factor
 	var lure_local := Vector3(
