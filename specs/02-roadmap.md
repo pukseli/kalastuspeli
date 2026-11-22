@@ -14,7 +14,7 @@
 | S5 | `05-smooth-sync` | nähdä veneen ja toisten pelaajien liikkuvan ilman nykimistä 100 ms viiveellä | Snapshot-interpolointi (viivesimulaatio testityökaluna) | `done` |
 | S6 | `06-held-items` | poimia vavan telineestä käteen, kävellä sen kanssa kannella ja asettaa sen toiseen telineeseen (2 perässä, 2+2 kyljillä: `-3..-1`, `+1..+3`) | Kannettava esine (`HeldItem`) | `done` |
 | S7 | `07-camera-controls` | kääntää kameraa (Field of Vision) vapaasti 360° kannella ja ruorissa, kävellä kamerasuuntaisesti, palauttaa näkymän (`R`) ja vaihtaa ohjausprofiilia (`K`: `arrows_wasd` / `wasd_mouse`) | Client-paikallinen, laite-agnostinen `CameraController` + ohjausprofiili (`src/view/`) | `done` |
-| S8 | `08-trolling-lines` | laskea siiman veteen, säätää sen pituutta ja nähdä vieheet ja plaanarit viuhkana veneen perässä | `RodState` (siima, viehe ja `PlanerBoard`) | `in-progress` |
+| S8 | `08-trolling-lines` | laskea siiman veteen, säätää sen pituutta ja nähdä vieheet ja plaanarit viuhkana veneen perässä | `RodState` (siima, viehe ja `PlanerBoard`) | `done` |
 | S9 | `09-bite-and-reel` | saada tärpin vapaan ja kelata kalan ulkolaidalta (`-3`/`+3`) veneen viereen | `FishState` (tärppi ja kelaus) | `draft` |
 | S10 | `10-landing-net-and-catch` | hakea haavin telineestä, kauhaista kalan ja kipata sen sumppuun, jolloin saalislaskuri kasvaa ⛳ | Haavitus (haavi → sumppu → saalislaskuri) | `draft` |
 | S11 | `11-line-tension` | hallita siiman kireyttä kalan syöksyissä: ylikelaus katkaisee siiman, löysä siima päästää kalan | Siiman kireys (`tension`) | `draft` |
