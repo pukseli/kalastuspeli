@@ -17,6 +17,8 @@ const ROD_ACCENT_PALETTE: Array[Color] = [
 	Color(1.00, 0.52, 0.14),
 ]
 
+const HELD_BASE_ROT_DEG := Vector3(-42.0, 0.0, -10.0)
+
 var _mesh_instance: MeshInstance3D
 var _material: StandardMaterial3D
 var _color_index: int = -1
@@ -42,7 +44,7 @@ func _init() -> void:
 	_held_item_anchor.name = "HeldItemAnchor"
 	_held_item_anchor.visible = false
 	_held_item_anchor.position = Vector3(0.30, 0.78, 0.12)
-	_held_item_anchor.rotation_degrees = Vector3(-42.0, 0.0, -10.0)
+	_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG
 	add_child(_held_item_anchor)
 
 	var shaft_mat := StandardMaterial3D.new()
@@ -89,13 +91,25 @@ func apply_state(player: PlayerState) -> void:
 	set_color_index(player.color_index)
 
 
-func apply_held_item(item: HeldItem) -> void:
+func apply_held_item(item: HeldItem, fish: FishState = null) -> void:
 	if item == null:
 		_held_item_anchor.visible = false
+		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG
 		return
 	_held_item_anchor.visible = true
 	var idx := posmod(item.color_index, ROD_ACCENT_PALETTE.size())
 	_held_tip_mat.albedo_color = ROD_ACCENT_PALETTE[idx]
+	if fish != null:
+		var big := FishSimulator.species_trips_planer(fish.species)
+		var osc := sin(fish.fight_phase * (2.2 if big else 3.0))
+		var pull := (14.0 if big else 5.0) + (6.0 if fish.is_drag_active() else 0.0)
+		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG + Vector3(
+			-pull * 0.5 + osc * (4.5 if big else 2.2),
+			osc * (3.5 if big else 1.5),
+			0.0
+		)
+	else:
+		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG
 
 
 func has_visible_held_item() -> bool:

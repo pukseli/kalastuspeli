@@ -8,6 +8,10 @@ var stations: Dictionary = StationConfig.create_default_stations()
 var item_config: ItemConfig = ItemConfig.new()
 var items: Dictionary = item_config.create_initial_items()
 var rods: Dictionary = {}
+var fishes: Dictionary = {}
+var fish_notice_seq: int = 0
+var fish_notice_text: String = ""
+var fish_notice_timer: float = 0.0
 
 var helm_steer_detent_timer: float = 0.0
 var helm_steer_detent_sign: int = 0
@@ -79,6 +83,10 @@ func configure_items(cfg: ItemConfig) -> void:
 	item_config = cfg if cfg != null else ItemConfig.new()
 	items = item_config.create_initial_items()
 	rods.clear()
+	fishes.clear()
+	fish_notice_seq = 0
+	fish_notice_text = ""
+	fish_notice_timer = 0.0
 	sync_rods_with_items()
 
 
@@ -90,6 +98,10 @@ func sync_rods_with_items() -> void:
 			var existing_item: HeldItem = items[existing_rid]
 			if existing_item == null or existing_item.item_type != ItemConfig.ITEM_TYPE_ROD:
 				rods.erase(existing_rid)
+
+	for existing_fid in fishes.keys():
+		if not rods.has(existing_fid) and not items.has(existing_fid):
+			fishes.erase(existing_fid)
 
 	for iid in items:
 		var item: HeldItem = items[iid]
@@ -129,6 +141,30 @@ func get_deployed_rod_count() -> int:
 		if rod != null and rod.is_deployed():
 			count += 1
 	return count
+
+
+func get_fish_state(rod_id: String) -> FishState:
+	if fishes.has(rod_id) and fishes[rod_id] is FishState:
+		return fishes[rod_id] as FishState
+	return null
+
+
+func has_fish_on_rod(rod_id: String) -> bool:
+	return get_fish_state(rod_id) != null
+
+
+func get_hooked_fish_count() -> int:
+	var count := 0
+	for fid in fishes:
+		if fishes[fid] is FishState:
+			count += 1
+	return count
+
+
+func set_fish_notice(text: String, duration: float = 4.5) -> void:
+	fish_notice_seq += 1
+	fish_notice_text = text
+	fish_notice_timer = maxf(0.0, duration)
 
 
 func get_player_held_item(peer_id: int) -> HeldItem:
@@ -189,6 +225,11 @@ func to_dict() -> Dictionary:
 		var rod: RodState = rods[rid]
 		if rod != null:
 			rods_dict[str(rid)] = rod.to_dict()
+	var fishes_dict := {}
+	for fid in fishes:
+		var fish: FishState = fishes[fid]
+		if fish != null:
+			fishes_dict[str(fid)] = fish.to_dict()
 	return {
 		"tick": tick,
 		"boat": boat.to_dict(),
@@ -196,6 +237,10 @@ func to_dict() -> Dictionary:
 		"stations": stations.duplicate(),
 		"items": items_dict,
 		"rods": rods_dict,
+		"fishes": fishes_dict,
+		"fish_notice_seq": fish_notice_seq,
+		"fish_notice_text": fish_notice_text,
+		"fish_notice_timer": fish_notice_timer,
 	}
 
 
@@ -267,5 +312,29 @@ func from_dict(data: Dictionary) -> void:
 		for existing_rid in rods.keys():
 			if not incoming_rod_ids.has(existing_rid):
 				rods.erase(existing_rid)
+
+	var raw_fishes: Variant = data.get("fishes", null)
+	if raw_fishes is Dictionary:
+		var incoming_fish_ids: Dictionary = {}
+		for raw_fid in raw_fishes:
+			var fid := str(raw_fid)
+			var f_data: Variant = raw_fishes[raw_fid]
+			if f_data is Dictionary:
+				incoming_fish_ids[fid] = true
+				var fish: FishState
+				if fishes.has(fid) and fishes[fid] is FishState:
+					fish = fishes[fid] as FishState
+				else:
+					fish = FishState.new()
+					fishes[fid] = fish
+				fish.from_dict(f_data)
+				fish.rod_id = fid
+		for existing_fid in fishes.keys():
+			if not incoming_fish_ids.has(existing_fid):
+				fishes.erase(existing_fid)
+
+	fish_notice_seq = int(data.get("fish_notice_seq", fish_notice_seq))
+	fish_notice_text = str(data.get("fish_notice_text", ""))
+	fish_notice_timer = maxf(0.0, float(data.get("fish_notice_timer", 0.0)))
 
 	sync_rods_with_items()

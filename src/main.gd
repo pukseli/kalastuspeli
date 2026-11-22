@@ -9,6 +9,7 @@ var station_simulator: StationSimulator = StationSimulator.new()
 var item_config: ItemConfig = ItemConfig.new()
 var item_simulator: ItemSimulator = ItemSimulator.new()
 var rod_simulator: RodSimulator = RodSimulator.new()
+var fish_simulator: FishSimulator = FishSimulator.new()
 var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
@@ -59,6 +60,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			world_view.camera_controller.reset_to_default(false)
 		elif event.physical_keycode == KEY_K or event.keycode == KEY_K:
 			world_view.camera_controller.cycle_control_scheme()
+		elif event.physical_keycode == KEY_F or event.keycode == KEY_F:
+			if env_config.debug_hotkeys and network_manager.is_authority():
+				fish_simulator.force_bite(game_state, rod_simulator)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -84,7 +88,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(_delta: float) -> void:
 	_read_local_input()
-	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator, item_simulator, rod_simulator)
+	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator, item_simulator, rod_simulator, fish_simulator)
 	player_input.interact = false
 	var display_state := game_state
 	if not network_manager.is_authority() and network_manager.interpolation_enabled:

@@ -17,12 +17,17 @@ var measured_interval: float = 3.0 * FIXED_DELTA
 var latest_stations: Dictionary = StationConfig.create_default_stations()
 var latest_items: Dictionary = {}
 var latest_rods: Dictionary = {}
+var latest_fishes: Dictionary = {}
+var latest_fish_notice_seq: int = 0
+var latest_fish_notice_text: String = ""
+var latest_fish_notice_timer: float = 0.0
 
 var _buffer: Array[Dictionary] = []
 var _has_snapshot: bool = false
 var _last_tick: int = -1
 var _has_latest_items: bool = false
 var _has_latest_rods: bool = false
+var _has_latest_fishes: bool = false
 
 
 ## Clears buffered snapshots and resets clock/delay tracking to defaults.
@@ -38,6 +43,11 @@ func clear() -> void:
 	_has_latest_items = false
 	latest_rods.clear()
 	_has_latest_rods = false
+	latest_fishes.clear()
+	_has_latest_fishes = false
+	latest_fish_notice_seq = 0
+	latest_fish_notice_text = ""
+	latest_fish_notice_timer = 0.0
 
 
 ## Returns the number of snapshots currently buffered.
@@ -94,12 +104,20 @@ func push_snapshot(snapshot: Dictionary) -> bool:
 	if has_rods:
 		latest_rods = _clone_rods_dict(parsed.rods)
 		_has_latest_rods = true
+	var has_fishes := snapshot.has("fishes") and snapshot["fishes"] is Dictionary
+	if has_fishes:
+		latest_fishes = _clone_fishes_dict(parsed.fishes)
+		_has_latest_fishes = true
+	latest_fish_notice_seq = parsed.fish_notice_seq
+	latest_fish_notice_text = parsed.fish_notice_text
+	latest_fish_notice_timer = parsed.fish_notice_timer
 	_buffer.append({
 		"tick": tick,
 		"time": sim_time,
 		"state": parsed,
 		"has_items": has_items,
 		"has_rods": has_rods,
+		"has_fishes": has_fishes,
 	})
 	while _buffer.size() > MAX_BUFFER_SIZE:
 		_buffer.pop_front()
@@ -114,11 +132,25 @@ func sample_at(target_state: GameState, sample_time: float, use_latest_stations:
 
 	var last_idx := _buffer.size() - 1
 	if _buffer.size() == 1 or sample_time <= float(_buffer[0]["time"]):
-		_copy_state_into(target_state, _buffer[0]["state"], use_latest_stations, bool(_buffer[0].get("has_items", false)), bool(_buffer[0].get("has_rods", false)))
+		_copy_state_into(
+			target_state,
+			_buffer[0]["state"],
+			use_latest_stations,
+			bool(_buffer[0].get("has_items", false)),
+			bool(_buffer[0].get("has_rods", false)),
+			bool(_buffer[0].get("has_fishes", false))
+		)
 		return true
 
 	if sample_time >= float(_buffer[last_idx]["time"]):
-		_copy_state_into(target_state, _buffer[last_idx]["state"], use_latest_stations, bool(_buffer[last_idx].get("has_items", false)), bool(_buffer[last_idx].get("has_rods", false)))
+		_copy_state_into(
+			target_state,
+			_buffer[last_idx]["state"],
+			use_latest_stations,
+			bool(_buffer[last_idx].get("has_items", false)),
+			bool(_buffer[last_idx].get("has_rods", false)),
+			bool(_buffer[last_idx].get("has_fishes", false))
+		)
 		return true
 
 	var entry_a: Dictionary = _buffer[0]
@@ -138,7 +170,16 @@ func sample_at(target_state: GameState, sample_time: float, use_latest_stations:
 
 	var state_a: GameState = entry_a["state"]
 	var state_b: GameState = entry_b["state"]
-	_interpolate_states(target_state, state_a, state_b, t, use_latest_stations, bool(entry_b.get("has_items", false)), bool(entry_b.get("has_rods", false)))
+	_interpolate_states(
+		target_state,
+		state_a,
+		state_b,
+		t,
+		use_latest_stations,
+		bool(entry_b.get("has_items", false)),
+		bool(entry_b.get("has_rods", false)),
+		bool(entry_b.get("has_fishes", false))
+	)
 	return true
 
 
@@ -164,7 +205,7 @@ func step(target_state: GameState, delta: float = FIXED_DELTA) -> bool:
 	return sample_at(target_state, render_time, true)
 
 
-func _copy_state_into(target_state: GameState, src: GameState, use_latest_stations: bool, src_has_items: bool = false, src_has_rods: bool = false) -> void:
+func _copy_state_into(target_state: GameState, src: GameState, use_latest_stations: bool, src_has_items: bool = false, src_has_rods: bool = false, src_has_fishes: bool = false) -> void:
 	target_state.tick = src.tick
 	_copy_boat_state(target_state.boat, src.boat)
 	_sync_players_from_single(target_state, src)
@@ -177,9 +218,16 @@ func _copy_state_into(target_state: GameState, src: GameState, use_latest_statio
 		_sync_rods_into(target_state, latest_rods)
 	elif not use_latest_stations and src_has_rods:
 		_sync_rods_into(target_state, src.rods)
+	if use_latest_stations and _has_latest_fishes:
+		_sync_fishes_into(target_state, latest_fishes)
+	elif not use_latest_stations and src_has_fishes:
+		_sync_fishes_into(target_state, src.fishes)
+	target_state.fish_notice_seq = latest_fish_notice_seq if use_latest_stations else src.fish_notice_seq
+	target_state.fish_notice_text = latest_fish_notice_text if use_latest_stations else src.fish_notice_text
+	target_state.fish_notice_timer = latest_fish_notice_timer if use_latest_stations else src.fish_notice_timer
 
 
-func _interpolate_states(target_state: GameState, state_a: GameState, state_b: GameState, t: float, use_latest_stations: bool, b_has_items: bool = false, b_has_rods: bool = false) -> void:
+func _interpolate_states(target_state: GameState, state_a: GameState, state_b: GameState, t: float, use_latest_stations: bool, b_has_items: bool = false, b_has_rods: bool = false, b_has_fishes: bool = false) -> void:
 	target_state.tick = state_b.tick
 
 	var boat_a := state_a.boat
@@ -218,6 +266,13 @@ func _interpolate_states(target_state: GameState, state_a: GameState, state_b: G
 	if (use_latest_stations and _has_latest_rods) or b_has_rods:
 		var disc_source: Dictionary = latest_rods if (use_latest_stations and _has_latest_rods) else state_b.rods
 		_interpolate_rods_into(target_state, state_a.rods, state_b.rods, disc_source, t)
+
+	if (use_latest_stations and _has_latest_fishes) or b_has_fishes:
+		var disc_fishes: Dictionary = latest_fishes if (use_latest_stations and _has_latest_fishes) else state_b.fishes
+		_interpolate_fishes_into(target_state, state_a.fishes, state_b.fishes, disc_fishes, t)
+	target_state.fish_notice_seq = latest_fish_notice_seq if use_latest_stations else state_b.fish_notice_seq
+	target_state.fish_notice_text = latest_fish_notice_text if use_latest_stations else state_b.fish_notice_text
+	target_state.fish_notice_timer = latest_fish_notice_timer if use_latest_stations else state_b.fish_notice_timer
 
 
 func _clone_rods_dict(source_rods: Dictionary) -> Dictionary:
@@ -310,6 +365,79 @@ func _interpolate_rods_into(
 			dst.planer.attached = disc_src.planer.attached
 			dst.planer.state = disc_src.planer.state
 			dst.planer.snag_world_position = disc_src.planer.snag_world_position
+
+
+func _clone_fishes_dict(source_fishes: Dictionary) -> Dictionary:
+	var cloned: Dictionary = {}
+	for fid in source_fishes:
+		var fish: FishState = source_fishes[fid]
+		if fish != null:
+			cloned[str(fid)] = fish.clone()
+	return cloned
+
+
+func _sync_fishes_into(target_state: GameState, source_fishes: Dictionary) -> void:
+	for existing_fid in target_state.fishes.keys():
+		if not source_fishes.has(existing_fid):
+			target_state.fishes.erase(existing_fid)
+	for fid in source_fishes:
+		var src_fish: FishState = source_fishes[fid]
+		if src_fish == null:
+			continue
+		if target_state.fishes.has(fid) and target_state.fishes[fid] is FishState:
+			var dst: FishState = target_state.fishes[fid]
+			dst.from_dict(src_fish.to_dict())
+			dst.rod_id = str(fid)
+		else:
+			var copy := src_fish.clone()
+			copy.rod_id = str(fid)
+			target_state.fishes[str(fid)] = copy
+
+
+func _interpolate_fishes_into(
+	target_state: GameState,
+	fishes_a: Dictionary,
+	fishes_b: Dictionary,
+	discrete_source: Dictionary,
+	t: float
+) -> void:
+	for existing_fid in target_state.fishes.keys():
+		if not discrete_source.has(existing_fid):
+			target_state.fishes.erase(existing_fid)
+
+	for raw_fid in discrete_source:
+		var fid := str(raw_fid)
+		var fdisc := discrete_source.get(fid, null) as FishState
+		if fdisc == null:
+			continue
+		var fa := fishes_a.get(fid, null) as FishState
+		var fb := fishes_b.get(fid, null) as FishState
+
+		var dst: FishState
+		if target_state.fishes.has(fid) and target_state.fishes[fid] is FishState:
+			dst = target_state.fishes[fid] as FishState
+		else:
+			dst = FishState.new()
+			target_state.fishes[fid] = dst
+
+		dst.from_dict(fdisc.to_dict())
+		dst.rod_id = fid
+
+		if fa != null and fb != null:
+			dst.stamina = lerpf(fa.stamina, fb.stamina, t)
+			dst.drag_rate = lerpf(fa.drag_rate, fb.drag_rate, t)
+			dst.lift_progress = lerpf(fa.lift_progress, fb.lift_progress, t)
+			dst.fight_phase = wrapf(lerp_angle(fa.fight_phase, fb.fight_phase, t), 0.0, TAU)
+			if fb.jump_progress >= fa.jump_progress:
+				dst.jump_progress = lerpf(fa.jump_progress, fb.jump_progress, t)
+			else:
+				dst.jump_progress = fb.jump_progress
+		elif fb != null:
+			dst.stamina = fb.stamina
+			dst.drag_rate = fb.drag_rate
+			dst.lift_progress = fb.lift_progress
+			dst.fight_phase = fb.fight_phase
+			dst.jump_progress = fb.jump_progress
 
 
 func _clone_items_dict(source_items: Dictionary) -> Dictionary:

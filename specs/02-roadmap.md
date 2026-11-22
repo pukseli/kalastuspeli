@@ -15,8 +15,9 @@
 | S6 | `06-held-items` | poimia vavan telineestä käteen, kävellä sen kanssa kannella ja asettaa sen toiseen telineeseen (2 perässä, 2+2 kyljillä: `-3..-1`, `+1..+3`) | Kannettava esine (`HeldItem`) | `done` |
 | S7 | `07-camera-controls` | kääntää kameraa (Field of Vision) vapaasti 360° kannella ja ruorissa, kävellä kamerasuuntaisesti, palauttaa näkymän (`R`) ja vaihtaa ohjausprofiilia (`K`: `arrows_wasd` / `wasd_mouse`) | Client-paikallinen, laite-agnostinen `CameraController` + ohjausprofiili (`src/view/`) | `done` |
 | S8 | `08-trolling-lines` | laskea siiman veteen, säätää sen pituutta ja nähdä vieheet ja plaanarit viuhkana veneen perässä | `RodState` (siima, viehe ja `PlanerBoard`) | `done` |
-| S9 | `09-bite-and-reel` | saada tärpin vapaan ja kelata kalan ulkolaidalta (`-3`/`+3`) veneen viereen | `FishState` (tärppi ja kelaus) | `draft` |
-| S10 | `10-landing-net-and-catch` | hakea haavin telineestä, kauhaista kalan ja kipata sen sumppuun, jolloin saalislaskuri kasvaa ⛳ | Haavitus (haavi → sumppu → saalislaskuri) | `draft` |
+| S9a | `09a-bite-and-reel` | saada tärpin vapaan (lajikohtaiset signaalit, jarru/räikkä, pintahypyt), kelata kalan vapa kädessä veneen viereen ja yrittää nostoa ilman haavia | `FishState` (tärppi, lajit, jarru/räikkä ja kelaus) | `in-progress` |
+| S9b | `09b-planer-detach` | kelata plaanarin veneen laidalle irrotuslukkoon ja irrottaa sen pitämällä `E`-näppäintä pohjassa mittarin täyttymiseen asti (yksin tai kaverin auttamana) | Jatkuva pidettävä interaktio (`PlayerInput.interact_held` + `detach_progress`) | `draft` |
+| S10 | `10-landing-net-and-catch` | hakea haavin telineestä, kauhaista veneen vieressä olevan kalan ja kipata sen sumppuun, jolloin saalislaskuri kasvaa (plaanarin irrotus siirtyi S9b:hen) ⛳ | Haavitus (haavi → sumppu → saalislaskuri) | `draft` |
 | S11 | `11-line-tension` | hallita siiman kireyttä kalan syöksyissä: ylikelaus katkaisee siiman, löysä siima päästää kalan | Siiman kireys (`tension`) | `draft` |
 | S12 | `12-trolling-window-and-tangles` | pitää vauhdin uisteluikkunassa, kokea siimasotkut (pysähdys tai jyrkkä käännös) ja selvittää solmun kannella | Siimasotkutila (uisteluikkuna laukaisimena) | `draft` |
 | S13 | `13-rod-threading` | pujottaa tärppivavan ulommaiseksi (`-1 → -3`) kaverin siirtäessä vapoja tieltä; sisäpaikalta kelaaminen sotkee siimat | Siimojen risteämisen tunnistus | `draft` |
@@ -38,6 +39,7 @@
 | — | `xx-snags-and-upkeep` | selvittää pohjatärpit, roskat vieheessä, moottoriviat ja pilssiveden myrskyssä | Vieheen syvyys/roskat + veneen huoltoasemat | `backlog` |
 | — | `xx-dedicated-server` | ajaa palvelimen ilman pelaajaa (`--server`) | Dedicated-tila | `backlog` |
 | — | `xx-gamepad-and-keybinds` | pelata peliohjaimella (gamepad) ja muokata näppäinasetuksia valikossa | Semanttinen `InputMap`-asetuskerros ja ohjaintuki | `backlog` |
+| — | `xx-planer-drop` | kokea plaanarin putoamisen veteen, jos sen irrottaminen menee täysin pieleen | Plaanarin menetys | `backlog` |
 
 **Tilat:** `draft` = idea, `approved` = speksi hyväksytty, `in-progress` = työn alla, `done` = DoD täyttyy, `backlog` = tarvittaessa.
 

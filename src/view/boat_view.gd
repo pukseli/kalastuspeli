@@ -161,7 +161,7 @@ func configure_holders(item_config: ItemConfig) -> void:
 		}
 
 
-func apply_items(items: Dictionary, item_config: ItemConfig = null) -> void:
+func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dictionary = {}) -> void:
 	if item_config != null:
 		configure_holders(item_config)
 
@@ -189,7 +189,21 @@ func apply_items(items: Dictionary, item_config: ItemConfig = null) -> void:
 			_holder_rod_views[iid] = rod_node
 
 		rod_node.position = meta["local_position"]
-		rod_node.rotation_degrees = meta["rotation_degrees"]
+		var base_rot: Vector3 = meta["rotation_degrees"]
+		var fish := fishes.get(iid, null) as FishState
+		if fish != null:
+			var side_sign := -float(int(meta.get("side", 1)))
+			var big := FishSimulator.species_trips_planer(fish.species)
+			var bend_amp := 16.0 if big else 6.0
+			var osc := sin(fish.fight_phase * (2.2 if big else 3.0))
+			var drag_kick := 6.0 if fish.is_drag_active() else 0.0
+			rod_node.rotation_degrees = base_rot + Vector3(
+				(bend_amp * 0.55 + drag_kick) + osc * (bend_amp * 0.45),
+				0.0,
+				side_sign * (bend_amp * 0.4 + osc * bend_amp * 0.35)
+			)
+		else:
+			rod_node.rotation_degrees = base_rot
 		var tip := rod_node.get_node_or_null("Tip") as MeshInstance3D
 		if tip != null and not _rod_tip_meshes.is_empty():
 			tip.mesh = _rod_tip_meshes[posmod(item.color_index, _rod_tip_meshes.size())]
@@ -248,7 +262,7 @@ func _free_children_safe(parent: Node) -> void:
 		_free_node_safe(child)
 
 
-func apply_players(players: Dictionary, items: Dictionary = {}) -> void:
+func apply_players(players: Dictionary, items: Dictionary = {}, fishes: Dictionary = {}) -> void:
 	for pid in _player_views.keys():
 		if not players.has(pid):
 			var stale_view: PlayerView = _player_views[pid]
@@ -272,4 +286,6 @@ func apply_players(players: Dictionary, items: Dictionary = {}) -> void:
 			players_container.add_child(view)
 			_player_views[pid] = view
 		view.apply_state(player_state)
-		view.apply_held_item(carried_by_peer.get(int(pid), null) as HeldItem)
+		var carried := carried_by_peer.get(int(pid), null) as HeldItem
+		var carried_fish := fishes.get(carried.id, null) as FishState if carried != null else null
+		view.apply_held_item(carried, carried_fish)

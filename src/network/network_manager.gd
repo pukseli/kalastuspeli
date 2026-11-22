@@ -355,7 +355,8 @@ func step_game_tick(
 	crew_sim: CrewSimulator,
 	station_sim: StationSimulator = null,
 	item_sim: ItemSimulator = null,
-	rod_sim: RodSimulator = null
+	rod_sim: RodSimulator = null,
+	fish_sim: FishSimulator = null
 ) -> Dictionary:
 	if is_authority():
 		for disconnected_id in _disconnected_peers:
@@ -388,6 +389,8 @@ func step_game_tick(
 		crew_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA)
 		if rod_sim != null:
 			rod_sim.step(game_state, crew_inputs, RodSimulator.FIXED_DELTA)
+		if fish_sim != null:
+			fish_sim.step(game_state, crew_inputs, rod_sim, FishSimulator.FIXED_DELTA)
 
 		for pid in crew_inputs:
 			if crew_inputs[pid] is Dictionary:

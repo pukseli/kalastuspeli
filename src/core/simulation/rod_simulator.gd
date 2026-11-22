@@ -152,6 +152,8 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 
 		if target_item == null or touched_rods.has(target_item.id):
 			continue
+		if state.has_fish_on_rod(target_item.id):
+			continue
 		var rod := state.get_rod_state(target_item.id)
 		if rod == null:
 			continue
@@ -276,6 +278,8 @@ func _check_planer_tangles(
 		var item := state.items.get(rid, null) as HeldItem
 		var rod := state.get_rod_state(rid)
 		if item == null or rod == null:
+			continue
+		if state.has_fish_on_rod(rid):
 			continue
 		if not rod.planer.attached or not rod.planer.is_active_trolling():
 			continue
@@ -447,6 +451,11 @@ func get_lure_world_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> V
 		0.0,
 		tip_local.z + cos(rod.trail_angle) * dist
 	)
+	if item != null and item.is_carried() and rod.is_deployed() and absf(lure_local.x) < 1.9 and lure_local.z < 3.8:
+		var side_sign := -1.0 if lure_local.x < -0.05 else (1.0 if lure_local.x > 0.05 else float(rod.planer.side))
+		if is_zero_approx(side_sign):
+			side_sign = 1.0
+		lure_local.x = side_sign * 2.05
 	var lure_world := state.boat.world_position + lure_local.rotated(Vector3.UP, state.boat.heading)
 	return Vector2(lure_world.x, lure_world.z)
 
