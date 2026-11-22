@@ -38,6 +38,7 @@
 | `move_x` | `float` | `0.0` | Kansikävelysyöte X-akselilla (`-1.0 .. 1.0`: `A = -1.0`, `D = +1.0`, lisätty S3) |
 | `move_z` | `float` | `0.0` | Kansikävelysyöte Z-akselilla (`-1.0 .. 1.0`: `W = -1.0` keulaan, `S = +1.0` perään, lisätty S3) |
 | `interact` | `bool` | `false` | Aseman varaus/vapautus (`E`-näppäin, lisätty S4) |
+| `line_input` | `float` | `0.0` | Siiman säätösyöte (`+1.0` ulos `Q`/`Shift`, `-1.0` sisään `Space`, lisätty S8) |
 
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
@@ -64,8 +65,9 @@
 | `stations` | `Dictionary` | `{"helm": 0}` | Asemat: `station_id: String -> occupant_peer_id: int` (lisätty S4) |
 | `items` | `Dictionary` | `item_config.create_initial_items()` | Kannettavat esineet: `item_id: String -> HeldItem` (lisätty S6) |
 | `item_config` | `ItemConfig` | `ItemConfig.new()` | Staattinen telineasettelu ja `rod_count` (ei replikoidu, lisätty S6) |
+| `rods` | `Dictionary` | `sync_rods_with_items()` | Vapojen siima- ja plaanaritilat: `rod_id: String -> RodState` (lisätty S8) |
 
-**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`, `configure_items(cfg: ItemConfig) -> void`, `get_player_held_item(peer_id: int) -> HeldItem`, `is_player_holding_item(peer_id: int) -> bool`, `get_holder_item(holder_id: String) -> HeldItem`, `return_item_to_holder(item: HeldItem) -> bool`
+**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`, `configure_items(cfg: ItemConfig) -> void`, `sync_rods_with_items() -> void`, `get_rod_state(rod_id: String) -> RodState`, `get_deployed_rod_count() -> int`, `get_player_held_item(peer_id: int) -> HeldItem`, `is_player_holding_item(peer_id: int) -> bool`, `get_holder_item(holder_id: String) -> HeldItem`, `return_item_to_holder(item: HeldItem) -> bool`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
 ### Viipale S6 (`06-held-items`)
@@ -84,40 +86,42 @@
 **Apumetodit:** `is_carried() -> bool`, `clone() -> HeldItem`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
----
+### Viipale S8 (`08-trolling-lines`)
 
-## Suunniteltu tietoskeema (toteutetaan viipaleissa S8+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
-
-> **Huomio Elävän skeeman säännöstä:** Alla olevat luokat ja laajennukset kuvaavat suunnitellun mekaniikkarakenteen tulevia viipaleita (`S8–S16`) varten, eivätkä ne ole vielä toteutettuna koodissa (`src/core/state/`). Kukin rakenne ja kenttä siirretään `Toteutetut tietorakenteet` -osioon vasta siinä atomisessa viipaleessa, jossa se toteutetaan.
-
-### 1. `PlanerBoard` (`extends RefCounted`, suunniteltu osa `RodState`-rakennetta)
+#### 6. `PlanerBoard` (`extends RefCounted`, `src/core/state/planer_board.gd`)
 
 | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- |
-| `side` | `int` | `1` | Puoli: `LEFT = -1`, `RIGHT = +1` (vavan/telineen puolen mukaan) |
-| `attached` | `bool` | `true` | Onko pikkuplaanari kiinnitetty siimaan (irrotetaan laidalla ennen haavitusta, `S10`) |
+| `side` | `int` | `1` | Puoli: `SIDE_LEFT = -1`, `SIDE_RIGHT = +1` (telineen mukaan) |
+| `attached` | `bool` | `true` | Onko pikkuplaanari kiinnitetty siimaan (oletus `true` kylkivavoissa `-3/-2`, `+2/+3`) |
 | `lateral_offset` | `float` | `0.0` | Sivuetäisyys veneen keskilinjasta metreinä (`< 0` vasen, `> 0` oikea) |
-| `line_out` | `float` | `0.0` | Vavasta ulkona olevan siiman pituus metreinä (**yksi totuuden lähde**, ei erillistä `line_length`-kenttää) |
-| `state` | `String` | `"STOWED"` | Tila: `"STOWED"`, `"DEPLOYING"`, `"TROLLING"`, `"TRIPPED"` (`S9`), `"TANGLED"` (`S12`), `"SNAGGED"` (`S16`) |
-| `snag_world_position` | `Vector2` | `Vector2.ZERO` | Maailman 2D-lukituspiste karikkoon tarttumisessa (`SNAGGED`, `S16`) |
+| `line_out` | `float` | `0.0` | Vavasta ulkona olevan siiman pituus metreinä (**yksi totuuden lähde**) |
+| `state` | `String` | `"STOWED"` | Tila: `"STOWED"`, `"DEPLOYING"`, `"TROLLING"`, `"TRIPPED"`, `"TANGLED"`, `"SNAGGED"` |
+| `snag_world_position` | `Vector2` | `Vector2.ZERO` | Maailman 2D-lukituspiste esteeseen tarttumisessa (`SNAGGED`) |
 
-**Johdetut arvot (ei replikoida):** `world_position` ($\vec{p}_{\text{board}}$), `lure_world_position` ($\vec{p}_{\text{lure}}$) ja `trail_z` lasketaan veneen sijainnista, suunnasta ja kentistä `lateral_offset` / `line_out`.
+**Apumetodit:** `is_in_water() -> bool`, `is_active_trolling() -> bool`, `clone() -> PlanerBoard`
+**Johdetut arvot (ei replikoida):** Plaanarin ja vieheen 2D-maailmasijainti lasketaan `RodSimulator`-luokassa veneen sijainnista, suunnasta ja kentistä `lateral_offset` / `line_out`.
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
-### 2. `RodState` (`extends RefCounted`, avain `HeldItem.id` sanakirjassa `GameState.rods`)
+#### 7. `RodState` (`extends RefCounted`, `src/core/state/rod_state.gd`)
 
 | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- |
 | `rod_id` | `String` | `""` | Vastaavan `HeldItem`-esineen tunniste (esim. `"rod_1"`) |
-| `trail_angle` | `float` | `0.0` | Siimaviuhkan suuntakulma kulmahitaudelle (rad) |
-| `trail_factor` | `float` | `1.0` | Paikallaan olevan vieheen vaakaprojektiokerroin (`0.0 .. 1.0`) |
+| `trail_angle` | `float` | `0.0` | Suoran siiman kulmahitaus veneen perälinjaan nähden (rad) |
+| `trail_factor` | `float` | `0.0` | Paikallaan olevan vieheen vaakaprojektiokerroin (`0.0 .. 1.0`) |
 | `planer` | `PlanerBoard` | `PlanerBoard.new()` | Vapaan kuuluva plaanari- ja `line_out`-tila |
 
+**Apumetodit:** `is_deployed() -> bool`, `get_line_out() -> float`, `clone() -> RodState`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
-### 3. Suunnitellut laajennukset (`GameState` ja `PlayerInput`)
+---
 
-| Luokka | Kenttä | Tyyppi | Oletus | Kuvaus |
-| :--- | :--- | :--- | :--- | :--- |
-| `GameState` | `rods` | `Dictionary` | `{}` | `rod_id: String -> RodState` (replikoitu) |
-| `PlayerInput` | `line_input` | `float` | `0.0` | Siiman kelaus-/laskusyöte (`-1.0 .. 1.0`: `Space` = kelaa, `Q`/`Shift` = laske) |
+## Suunniteltu tietoskeema (tulevat viipaleet S9+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
+
+> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState`, `GameState.rods` ja `PlayerInput.line_input` on toteutettu viipaleessa `S8`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
+> - **`S9` (`09-bite-and-reel`):** `FishState`, tärppiaktivaatio (`TRIPPED`) ja `quiet_water_bite_bonus`.
+> - **`S10` (`10-landing-net-and-catch`):** Haavi, kalasumppu, saalislaskuri ja `PlanerBoard.attached` -irrotuslukko veneen laidalla ennen haavitusta.
+> - **`S11` (`11-line-tension`):** Siiman kireys (`tension`), ylikelauskatkeaminen ja `snag_tension_rate`-kireysnousu.
+> - **`S12` (`12-trolling-window-and-tangles`):** Uisteluikkunakalibrointi ja `TANGLED`-solmun selvitys kannella.
+> - **`S16` (`16-lake-obstacles`):** `WorldFeatures`-saaret ja -karikot, jotka syöttävät esteet `RodSimulator.step(..., obstacles)`-rajapintaan (`SNAGGED`).

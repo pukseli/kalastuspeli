@@ -16,11 +16,13 @@ var current_delay: float = MIN_INTERP_DELAY
 var measured_interval: float = 3.0 * FIXED_DELTA
 var latest_stations: Dictionary = StationConfig.create_default_stations()
 var latest_items: Dictionary = {}
+var latest_rods: Dictionary = {}
 
 var _buffer: Array[Dictionary] = []
 var _has_snapshot: bool = false
 var _last_tick: int = -1
 var _has_latest_items: bool = false
+var _has_latest_rods: bool = false
 
 
 ## Clears buffered snapshots and resets clock/delay tracking to defaults.
@@ -34,6 +36,8 @@ func clear() -> void:
 	latest_stations = StationConfig.create_default_stations()
 	latest_items.clear()
 	_has_latest_items = false
+	latest_rods.clear()
+	_has_latest_rods = false
 
 
 ## Returns the number of snapshots currently buffered.
@@ -86,11 +90,16 @@ func push_snapshot(snapshot: Dictionary) -> bool:
 	if has_items:
 		latest_items = _clone_items_dict(parsed.items)
 		_has_latest_items = true
+	var has_rods := snapshot.has("rods") and snapshot["rods"] is Dictionary
+	if has_rods:
+		latest_rods = _clone_rods_dict(parsed.rods)
+		_has_latest_rods = true
 	_buffer.append({
 		"tick": tick,
 		"time": sim_time,
 		"state": parsed,
 		"has_items": has_items,
+		"has_rods": has_rods,
 	})
 	while _buffer.size() > MAX_BUFFER_SIZE:
 		_buffer.pop_front()
@@ -105,11 +114,11 @@ func sample_at(target_state: GameState, sample_time: float, use_latest_stations:
 
 	var last_idx := _buffer.size() - 1
 	if _buffer.size() == 1 or sample_time <= float(_buffer[0]["time"]):
-		_copy_state_into(target_state, _buffer[0]["state"], use_latest_stations, bool(_buffer[0].get("has_items", false)))
+		_copy_state_into(target_state, _buffer[0]["state"], use_latest_stations, bool(_buffer[0].get("has_items", false)), bool(_buffer[0].get("has_rods", false)))
 		return true
 
 	if sample_time >= float(_buffer[last_idx]["time"]):
-		_copy_state_into(target_state, _buffer[last_idx]["state"], use_latest_stations, bool(_buffer[last_idx].get("has_items", false)))
+		_copy_state_into(target_state, _buffer[last_idx]["state"], use_latest_stations, bool(_buffer[last_idx].get("has_items", false)), bool(_buffer[last_idx].get("has_rods", false)))
 		return true
 
 	var entry_a: Dictionary = _buffer[0]
@@ -129,7 +138,7 @@ func sample_at(target_state: GameState, sample_time: float, use_latest_stations:
 
 	var state_a: GameState = entry_a["state"]
 	var state_b: GameState = entry_b["state"]
-	_interpolate_states(target_state, state_a, state_b, t, use_latest_stations, bool(entry_b.get("has_items", false)))
+	_interpolate_states(target_state, state_a, state_b, t, use_latest_stations, bool(entry_b.get("has_items", false)), bool(entry_b.get("has_rods", false)))
 	return true
 
 
@@ -155,7 +164,7 @@ func step(target_state: GameState, delta: float = FIXED_DELTA) -> bool:
 	return sample_at(target_state, render_time, true)
 
 
-func _copy_state_into(target_state: GameState, src: GameState, use_latest_stations: bool, src_has_items: bool = false) -> void:
+func _copy_state_into(target_state: GameState, src: GameState, use_latest_stations: bool, src_has_items: bool = false, src_has_rods: bool = false) -> void:
 	target_state.tick = src.tick
 	_copy_boat_state(target_state.boat, src.boat)
 	_sync_players_from_single(target_state, src)
@@ -164,9 +173,13 @@ func _copy_state_into(target_state: GameState, src: GameState, use_latest_statio
 		_sync_items_into(target_state, latest_items)
 	elif not use_latest_stations and src_has_items:
 		_sync_items_into(target_state, src.items)
+	if use_latest_stations and _has_latest_rods:
+		_sync_rods_into(target_state, latest_rods)
+	elif not use_latest_stations and src_has_rods:
+		_sync_rods_into(target_state, src.rods)
 
 
-func _interpolate_states(target_state: GameState, state_a: GameState, state_b: GameState, t: float, use_latest_stations: bool, b_has_items: bool = false) -> void:
+func _interpolate_states(target_state: GameState, state_a: GameState, state_b: GameState, t: float, use_latest_stations: bool, b_has_items: bool = false, b_has_rods: bool = false) -> void:
 	target_state.tick = state_b.tick
 
 	var boat_a := state_a.boat
@@ -201,6 +214,102 @@ func _interpolate_states(target_state: GameState, state_a: GameState, state_b: G
 		_sync_items_into(target_state, latest_items)
 	elif not use_latest_stations and b_has_items:
 		_sync_items_into(target_state, state_b.items)
+
+	if (use_latest_stations and _has_latest_rods) or b_has_rods:
+		var disc_source: Dictionary = latest_rods if (use_latest_stations and _has_latest_rods) else state_b.rods
+		_interpolate_rods_into(target_state, state_a.rods, state_b.rods, disc_source, t)
+
+
+func _clone_rods_dict(source_rods: Dictionary) -> Dictionary:
+	var cloned: Dictionary = {}
+	for rid in source_rods:
+		var rod: RodState = source_rods[rid]
+		if rod != null:
+			cloned[str(rid)] = rod.clone()
+	return cloned
+
+
+func _sync_rods_into(target_state: GameState, source_rods: Dictionary) -> void:
+	for existing_rid in target_state.rods.keys():
+		if not source_rods.has(existing_rid):
+			target_state.rods.erase(existing_rid)
+	for rid in source_rods:
+		var src_rod: RodState = source_rods[rid]
+		if src_rod == null:
+			continue
+		if target_state.rods.has(rid) and target_state.rods[rid] is RodState:
+			var dst: RodState = target_state.rods[rid]
+			dst.rod_id = src_rod.rod_id
+			dst.trail_angle = src_rod.trail_angle
+			dst.trail_factor = src_rod.trail_factor
+			if dst.planer == null:
+				dst.planer = PlanerBoard.new()
+			if src_rod.planer != null:
+				dst.planer.side = src_rod.planer.side
+				dst.planer.attached = src_rod.planer.attached
+				dst.planer.lateral_offset = src_rod.planer.lateral_offset
+				dst.planer.line_out = src_rod.planer.line_out
+				dst.planer.state = src_rod.planer.state
+				dst.planer.snag_world_position = src_rod.planer.snag_world_position
+		else:
+			target_state.rods[str(rid)] = src_rod.clone()
+
+
+func _interpolate_rods_into(
+	target_state: GameState,
+	rods_a: Dictionary,
+	rods_b: Dictionary,
+	discrete_source: Dictionary,
+	t: float
+) -> void:
+	for existing_rid in target_state.rods.keys():
+		if not rods_b.has(existing_rid) and not discrete_source.has(existing_rid):
+			target_state.rods.erase(existing_rid)
+
+	var keys_to_sync: Dictionary = {}
+	for rid in rods_b:
+		keys_to_sync[str(rid)] = true
+	for rid in discrete_source:
+		keys_to_sync[str(rid)] = true
+
+	for rid in keys_to_sync:
+		var rb := rods_b.get(rid, null) as RodState
+		var ra := rods_a.get(rid, null) as RodState
+		var rdisc := discrete_source.get(rid, rb) as RodState
+		if rb == null and rdisc == null:
+			continue
+		var dst: RodState
+		if target_state.rods.has(rid) and target_state.rods[rid] is RodState:
+			dst = target_state.rods[rid] as RodState
+		else:
+			dst = RodState.new()
+			target_state.rods[rid] = dst
+		if dst.planer == null:
+			dst.planer = PlanerBoard.new()
+		dst.rod_id = rid
+
+		if rb != null and ra != null:
+			dst.trail_angle = wrapf(lerp_angle(ra.trail_angle, rb.trail_angle, t), -PI, PI)
+			dst.trail_factor = lerpf(ra.trail_factor, rb.trail_factor, t)
+			dst.planer.line_out = lerpf(ra.planer.line_out, rb.planer.line_out, t)
+			dst.planer.lateral_offset = lerpf(ra.planer.lateral_offset, rb.planer.lateral_offset, t)
+		elif rb != null:
+			dst.trail_angle = rb.trail_angle
+			dst.trail_factor = rb.trail_factor
+			dst.planer.line_out = rb.planer.line_out
+			dst.planer.lateral_offset = rb.planer.lateral_offset
+		elif rdisc != null:
+			dst.trail_angle = rdisc.trail_angle
+			dst.trail_factor = rdisc.trail_factor
+			dst.planer.line_out = rdisc.planer.line_out
+			dst.planer.lateral_offset = rdisc.planer.lateral_offset
+
+		var disc_src := rdisc if rdisc != null else rb
+		if disc_src != null and disc_src.planer != null:
+			dst.planer.side = disc_src.planer.side
+			dst.planer.attached = disc_src.planer.attached
+			dst.planer.state = disc_src.planer.state
+			dst.planer.snag_world_position = disc_src.planer.snag_world_position
 
 
 func _clone_items_dict(source_items: Dictionary) -> Dictionary:

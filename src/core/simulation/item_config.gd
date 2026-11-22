@@ -30,12 +30,12 @@ func _init(custom_holders: Array = [], custom_rod_count: int = DEFAULT_ROD_COUNT
 
 static func create_default_rod_holders() -> Array[Dictionary]:
 	var specs: Array[Dictionary] = [
-		{"slot": -3, "id": "rod_-3", "label": "-3", "side": -1, "pos": Vector3(-DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 0.8), "tilt": Vector3(14.0, 0.0, 38.0)},
-		{"slot": -2, "id": "rod_-2", "label": "-2", "side": -1, "pos": Vector3(-DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 2.1), "tilt": Vector3(14.0, 0.0, 38.0)},
-		{"slot": -1, "id": "rod_-1", "label": "-1", "side": -1, "pos": Vector3(-DEFAULT_STERN_X, HOLDER_MOUNT_Y, DEFAULT_STERN_Z), "tilt": Vector3(38.0, 0.0, 12.0)},
-		{"slot": 1, "id": "rod_+1", "label": "+1", "side": 1, "pos": Vector3(DEFAULT_STERN_X, HOLDER_MOUNT_Y, DEFAULT_STERN_Z), "tilt": Vector3(38.0, 0.0, -12.0)},
-		{"slot": 2, "id": "rod_+2", "label": "+2", "side": 1, "pos": Vector3(DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 2.1), "tilt": Vector3(14.0, 0.0, -38.0)},
-		{"slot": 3, "id": "rod_+3", "label": "+3", "side": 1, "pos": Vector3(DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 0.8), "tilt": Vector3(14.0, 0.0, -38.0)},
+		{"slot": -3, "id": "rod_-3", "label": "-3", "side": -1, "pos": Vector3(-DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 0.8), "tilt": Vector3(14.0, 0.0, 38.0), "spread": -55.0, "planer": true},
+		{"slot": -2, "id": "rod_-2", "label": "-2", "side": -1, "pos": Vector3(-DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 2.1), "tilt": Vector3(14.0, 0.0, 38.0), "spread": -38.0, "planer": true},
+		{"slot": -1, "id": "rod_-1", "label": "-1", "side": -1, "pos": Vector3(-DEFAULT_STERN_X, HOLDER_MOUNT_Y, DEFAULT_STERN_Z), "tilt": Vector3(38.0, 0.0, 12.0), "spread": -8.0, "planer": false},
+		{"slot": 1, "id": "rod_+1", "label": "+1", "side": 1, "pos": Vector3(DEFAULT_STERN_X, HOLDER_MOUNT_Y, DEFAULT_STERN_Z), "tilt": Vector3(38.0, 0.0, -12.0), "spread": 8.0, "planer": false},
+		{"slot": 2, "id": "rod_+2", "label": "+2", "side": 1, "pos": Vector3(DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 2.1), "tilt": Vector3(14.0, 0.0, -38.0), "spread": 38.0, "planer": true},
+		{"slot": 3, "id": "rod_+3", "label": "+3", "side": 1, "pos": Vector3(DEFAULT_SIDE_X, HOLDER_MOUNT_Y, 0.8), "tilt": Vector3(14.0, 0.0, -38.0), "spread": 55.0, "planer": true},
 	]
 	var result: Array[Dictionary] = []
 	for spec in specs:
@@ -48,6 +48,8 @@ static func create_default_rod_holders() -> Array[Dictionary]:
 			"tilt_degrees": spec["tilt"],
 			"radius": DEFAULT_HOLDER_RADIUS,
 			"allowed_types": [ITEM_TYPE_ROD],
+			"spread_angle_deg": float(spec["spread"]),
+			"default_planer_attached": bool(spec["planer"]),
 		})
 	return result
 
@@ -169,6 +171,8 @@ func _normalize_holder(raw: Dictionary) -> Dictionary:
 		tilt = Vector3(float(td.get("x", tilt.x)), float(td.get("y", tilt.y)), float(td.get("z", tilt.z)))
 	var radius := maxf(0.05, float(raw.get("radius", DEFAULT_HOLDER_RADIUS)))
 	var label := str(raw.get("label", hid))
+	var spread_angle_deg := float(raw.get("spread_angle_deg", float(side) * 20.0))
+	var default_planer_attached := bool(raw.get("default_planer_attached", false))
 
 	var allowed_types: Array[String] = []
 	var raw_allowed: Variant = raw.get("allowed_types", [ITEM_TYPE_ROD])
@@ -188,6 +192,8 @@ func _normalize_holder(raw: Dictionary) -> Dictionary:
 		"tilt_degrees": tilt,
 		"radius": radius,
 		"allowed_types": allowed_types,
+		"spread_angle_deg": spread_angle_deg,
+		"default_planer_attached": default_planer_attached,
 	}
 	if raw.has("slot"):
 		out["slot"] = int(raw["slot"])

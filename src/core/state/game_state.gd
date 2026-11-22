@@ -7,12 +7,17 @@ var players: Dictionary = {}
 var stations: Dictionary = StationConfig.create_default_stations()
 var item_config: ItemConfig = ItemConfig.new()
 var items: Dictionary = item_config.create_initial_items()
+var rods: Dictionary = {}
 
 var helm_steer_detent_timer: float = 0.0
 var helm_steer_detent_sign: int = 0
 var helm_throttle_detent_timer: float = 0.0
 var helm_throttle_detent_sign: int = 0
 var helm_last_occupant: int = 0
+
+
+func _init() -> void:
+	sync_rods_with_items()
 
 
 func reset_helm_detents() -> void:
@@ -73,6 +78,57 @@ func remove_player(peer_id: int) -> void:
 func configure_items(cfg: ItemConfig) -> void:
 	item_config = cfg if cfg != null else ItemConfig.new()
 	items = item_config.create_initial_items()
+	rods.clear()
+	sync_rods_with_items()
+
+
+func sync_rods_with_items() -> void:
+	for existing_rid in rods.keys():
+		if not items.has(existing_rid):
+			rods.erase(existing_rid)
+		else:
+			var existing_item: HeldItem = items[existing_rid]
+			if existing_item == null or existing_item.item_type != ItemConfig.ITEM_TYPE_ROD:
+				rods.erase(existing_rid)
+
+	for iid in items:
+		var item: HeldItem = items[iid]
+		if item == null or item.item_type != ItemConfig.ITEM_TYPE_ROD:
+			continue
+		var rid := str(iid)
+		if rods.has(rid) and rods[rid] is RodState:
+			var existing_rod := rods[rid] as RodState
+			existing_rod.rod_id = rid
+			if existing_rod.planer == null:
+				existing_rod.planer = PlanerBoard.new()
+			continue
+
+		var rod := RodState.new()
+		rod.rod_id = rid
+		var hid := item.holder_id if not item.holder_id.is_empty() else item.last_holder_id
+		if item_config != null and not hid.is_empty() and item_config.has_holder(hid):
+			var holder := item_config.get_holder(hid)
+			rod.planer.side = PlanerBoard.SIDE_LEFT if int(holder.get("side", 1)) < 0 else PlanerBoard.SIDE_RIGHT
+			rod.planer.attached = bool(holder.get("default_planer_attached", false))
+		else:
+			rod.planer.side = PlanerBoard.SIDE_RIGHT
+			rod.planer.attached = false
+		rods[rid] = rod
+
+
+func get_rod_state(rod_id: String) -> RodState:
+	if rods.has(rod_id) and rods[rod_id] is RodState:
+		return rods[rod_id] as RodState
+	return null
+
+
+func get_deployed_rod_count() -> int:
+	var count := 0
+	for rid in rods:
+		var rod: RodState = rods[rid]
+		if rod != null and rod.is_deployed():
+			count += 1
+	return count
 
 
 func get_player_held_item(peer_id: int) -> HeldItem:
@@ -128,12 +184,18 @@ func to_dict() -> Dictionary:
 	for iid in items:
 		var item: HeldItem = items[iid]
 		items_dict[str(iid)] = item.to_dict()
+	var rods_dict := {}
+	for rid in rods:
+		var rod: RodState = rods[rid]
+		if rod != null:
+			rods_dict[str(rid)] = rod.to_dict()
 	return {
 		"tick": tick,
 		"boat": boat.to_dict(),
 		"players": players_dict,
 		"stations": stations.duplicate(),
 		"items": items_dict,
+		"rods": rods_dict,
 	}
 
 
@@ -185,3 +247,25 @@ func from_dict(data: Dictionary) -> void:
 		for existing_iid in items.keys():
 			if not incoming_item_ids.has(existing_iid):
 				items.erase(existing_iid)
+
+	var raw_rods: Variant = data.get("rods", null)
+	if raw_rods is Dictionary:
+		var incoming_rod_ids: Dictionary = {}
+		for raw_rid in raw_rods:
+			var rid := str(raw_rid)
+			var r_data: Variant = raw_rods[raw_rid]
+			if r_data is Dictionary:
+				incoming_rod_ids[rid] = true
+				var rod: RodState
+				if rods.has(rid) and rods[rid] is RodState:
+					rod = rods[rid] as RodState
+				else:
+					rod = RodState.new()
+					rods[rid] = rod
+				rod.from_dict(r_data)
+				rod.rod_id = rid
+		for existing_rid in rods.keys():
+			if not incoming_rod_ids.has(existing_rid):
+				rods.erase(existing_rid)
+
+	sync_rods_with_items()

@@ -8,6 +8,7 @@ var crew_simulator: CrewSimulator = CrewSimulator.new()
 var station_simulator: StationSimulator = StationSimulator.new()
 var item_config: ItemConfig = ItemConfig.new()
 var item_simulator: ItemSimulator = ItemSimulator.new()
+var rod_simulator: RodSimulator = RodSimulator.new()
 var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
@@ -83,7 +84,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(_delta: float) -> void:
 	_read_local_input()
-	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator, item_simulator)
+	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator, item_simulator, rod_simulator)
 	player_input.interact = false
 	var display_state := game_state
 	if not network_manager.is_authority() and network_manager.interpolation_enabled:
@@ -138,6 +139,14 @@ func _read_local_input() -> void:
 	player_input.move_z = float(mapped["move_z"])
 	player_input.throttle = float(mapped["throttle"])
 	player_input.steering = float(mapped["steering"])
+
+	var line_in := 0.0
+	if Input.is_physical_key_pressed(KEY_Q) or Input.is_physical_key_pressed(KEY_SHIFT):
+		line_in += 1.0
+	if Input.is_physical_key_pressed(KEY_SPACE):
+		line_in -= 1.0
+	player_input.line_input = clampf(line_in, -1.0, 1.0)
+
 	world_view.camera_controller.apply_axes(
 		float(mapped["cam_yaw_axis"]),
 		float(mapped["cam_pitch_axis"]),

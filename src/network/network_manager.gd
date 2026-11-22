@@ -316,6 +316,7 @@ func receive_client_input(peer_id: int, input_dict: Dictionary) -> void:
 		"move_x": clampf(float(input_dict.get("move_x", 0.0)), -1.0, 1.0),
 		"move_z": clampf(float(input_dict.get("move_z", 0.0)), -1.0, 1.0),
 		"interact": prev_interact or bool(input_dict.get("interact", false)),
+		"line_input": clampf(float(input_dict.get("line_input", 0.0)), -1.0, 1.0),
 	}
 
 
@@ -353,7 +354,8 @@ func step_game_tick(
 	boat_sim: BoatSimulator,
 	crew_sim: CrewSimulator,
 	station_sim: StationSimulator = null,
-	item_sim: ItemSimulator = null
+	item_sim: ItemSimulator = null,
+	rod_sim: RodSimulator = null
 ) -> Dictionary:
 	if is_authority():
 		for disconnected_id in _disconnected_peers:
@@ -384,6 +386,8 @@ func step_game_tick(
 			var combined := get_combined_input(local_input)
 			boat_sim.step(game_state.boat, combined, BoatSimulator.FIXED_DELTA)
 		crew_sim.step(game_state, crew_inputs, CrewSimulator.FIXED_DELTA)
+		if rod_sim != null:
+			rod_sim.step(game_state, crew_inputs, RodSimulator.FIXED_DELTA)
 
 		for pid in crew_inputs:
 			if crew_inputs[pid] is Dictionary:
@@ -482,6 +486,7 @@ func rpc_submit_client_interact() -> void:
 			"move_x": 0.0,
 			"move_z": 0.0,
 			"interact": true,
+			"line_input": 0.0,
 		}
 	else:
 		_client_inputs[sender_id]["interact"] = true
@@ -508,6 +513,7 @@ func _on_peer_connected(peer_id: int) -> void:
 			"move_x": 0.0,
 			"move_z": 0.0,
 			"interact": false,
+			"line_input": 0.0,
 		}
 	_log_net("[NET] Peer connected: %d" % peer_id)
 
