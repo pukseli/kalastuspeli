@@ -83,3 +83,41 @@
 
 **Apumetodit:** `is_carried() -> bool`, `clone() -> HeldItem`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
+
+---
+
+## Suunniteltu tietoskeema (toteutetaan viipaleissa S8+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
+
+> **Huomio Elävän skeeman säännöstä:** Alla olevat luokat ja laajennukset kuvaavat suunnitellun mekaniikkarakenteen tulevia viipaleita (`S8–S16`) varten, eivätkä ne ole vielä toteutettuna koodissa (`src/core/state/`). Kukin rakenne ja kenttä siirretään `Toteutetut tietorakenteet` -osioon vasta siinä atomisessa viipaleessa, jossa se toteutetaan.
+
+### 1. `PlanerBoard` (`extends RefCounted`, suunniteltu osa `RodState`-rakennetta)
+
+| Kenttä | Tyyppi | Oletus | Kuvaus |
+| :--- | :--- | :--- | :--- |
+| `side` | `int` | `1` | Puoli: `LEFT = -1`, `RIGHT = +1` (vavan/telineen puolen mukaan) |
+| `attached` | `bool` | `true` | Onko pikkuplaanari kiinnitetty siimaan (irrotetaan laidalla ennen haavitusta, `S10`) |
+| `lateral_offset` | `float` | `0.0` | Sivuetäisyys veneen keskilinjasta metreinä (`< 0` vasen, `> 0` oikea) |
+| `line_out` | `float` | `0.0` | Vavasta ulkona olevan siiman pituus metreinä (**yksi totuuden lähde**, ei erillistä `line_length`-kenttää) |
+| `state` | `String` | `"STOWED"` | Tila: `"STOWED"`, `"DEPLOYING"`, `"TROLLING"`, `"TRIPPED"` (`S9`), `"TANGLED"` (`S12`), `"SNAGGED"` (`S16`) |
+| `snag_world_position` | `Vector2` | `Vector2.ZERO` | Maailman 2D-lukituspiste karikkoon tarttumisessa (`SNAGGED`, `S16`) |
+
+**Johdetut arvot (ei replikoida):** `world_position` ($\vec{p}_{\text{board}}$), `lure_world_position` ($\vec{p}_{\text{lure}}$) ja `trail_z` lasketaan veneen sijainnista, suunnasta ja kentistä `lateral_offset` / `line_out`.
+**Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
+
+### 2. `RodState` (`extends RefCounted`, avain `HeldItem.id` sanakirjassa `GameState.rods`)
+
+| Kenttä | Tyyppi | Oletus | Kuvaus |
+| :--- | :--- | :--- | :--- |
+| `rod_id` | `String` | `""` | Vastaavan `HeldItem`-esineen tunniste (esim. `"rod_1"`) |
+| `trail_angle` | `float` | `0.0` | Siimaviuhkan suuntakulma kulmahitaudelle (rad) |
+| `trail_factor` | `float` | `1.0` | Paikallaan olevan vieheen vaakaprojektiokerroin (`0.0 .. 1.0`) |
+| `planer` | `PlanerBoard` | `PlanerBoard.new()` | Vapaan kuuluva plaanari- ja `line_out`-tila |
+
+**Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
+
+### 3. Suunnitellut laajennukset (`GameState` ja `PlayerInput`)
+
+| Luokka | Kenttä | Tyyppi | Oletus | Kuvaus |
+| :--- | :--- | :--- | :--- | :--- |
+| `GameState` | `rods` | `Dictionary` | `{}` | `rod_id: String -> RodState` (replikoitu) |
+| `PlayerInput` | `line_input` | `float` | `0.0` | Siiman kelaus-/laskusyöte (`-1.0 .. 1.0`: `Space` = kelaa, `Q`/`Shift` = laske) |
