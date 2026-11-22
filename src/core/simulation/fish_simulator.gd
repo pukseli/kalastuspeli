@@ -26,8 +26,8 @@ const SPECIES_SPECS: Dictionary = {
 	},
 	FishState.SPECIES_PERCH: {
 		"display_name": "Ahven",
-		"weight_min": 0.30,
-		"weight_max": 1.20,
+		"weight_min": 0.25,
+		"weight_max": 0.95,
 		"spawn_weight": 30.0,
 		"trips_planer": false,
 		"can_jump": false,
@@ -121,6 +121,65 @@ const SPECIES_SPECS: Dictionary = {
 	},
 }
 
+const STRIKE_REACTION_PROFILES: Dictionary = {
+	FishState.SIZE_SMALL: {
+		"trips_planer": false,
+		"pull_back_rest": 0.35,
+		"pull_back_burst": 0.80,
+		"submersion_rest": 0.0,
+		"submersion_burst": 0.0,
+		"flag_angle_rest": -12.0,
+		"flag_angle_burst": -30.0,
+		"shake_rest": 0.08,
+		"shake_burst": 0.22,
+		"inward_drift_rest": 0.0,
+		"inward_drift_burst": 0.0,
+		"can_drift_tangle": false,
+	},
+	FishState.SIZE_MEDIUM: {
+		"trips_planer": true,
+		"pull_back_rest": 1.60,
+		"pull_back_burst": 2.80,
+		"submersion_rest": 0.0,
+		"submersion_burst": 0.12,
+		"flag_angle_rest": -62.0,
+		"flag_angle_burst": -70.0,
+		"shake_rest": 0.22,
+		"shake_burst": 0.55,
+		"inward_drift_rest": 0.35,
+		"inward_drift_burst": 0.75,
+		"can_drift_tangle": false,
+	},
+	FishState.SIZE_LARGE: {
+		"trips_planer": true,
+		"pull_back_rest": 3.20,
+		"pull_back_burst": 5.20,
+		"submersion_rest": 0.30,
+		"submersion_burst": 0.80,
+		"flag_angle_rest": -68.0,
+		"flag_angle_burst": -75.0,
+		"shake_rest": 0.35,
+		"shake_burst": 0.80,
+		"inward_drift_rest": 1.35,
+		"inward_drift_burst": 2.60,
+		"can_drift_tangle": true,
+	},
+	FishState.SIZE_MONSTER: {
+		"trips_planer": true,
+		"pull_back_rest": 5.00,
+		"pull_back_burst": 7.50,
+		"submersion_rest": 0.82,
+		"submersion_burst": 1.00,
+		"flag_angle_rest": -75.0,
+		"flag_angle_burst": -78.0,
+		"shake_rest": 0.50,
+		"shake_burst": 1.00,
+		"inward_drift_rest": 2.40,
+		"inward_drift_burst": 4.20,
+		"can_drift_tangle": true,
+	},
+}
+
 
 class Config extends RefCounted:
 	var base_bite_rate_per_rod: float = 0.018
@@ -147,6 +206,14 @@ class Config extends RefCounted:
 	var lift_hold_duration: float = 1.2
 	var lift_decay_rate: float = 1.5
 	var ready_unattended_timeout_sec: float = 25.0
+	var small_max_kg: float = 1.0
+	var medium_max_kg: float = 4.0
+	var large_max_kg: float = 8.0
+	var reaction_pull_back_rate: float = 12.0
+	var reaction_submersion_rate: float = 4.0
+	var reaction_flag_rate: float = 240.0
+	var reaction_shake_rate: float = 6.0
+	var reaction_drift_rate: float = 8.0
 
 
 var config: Config = Config.new()
@@ -175,6 +242,16 @@ static func get_species_display_name(species_id: String) -> String:
 
 static func species_trips_planer(species_id: String) -> bool:
 	return bool(get_species_spec(species_id).get("trips_planer", false))
+
+
+static func get_strike_reaction_profile(size_class: String) -> Dictionary:
+	if STRIKE_REACTION_PROFILES.has(size_class):
+		return STRIKE_REACTION_PROFILES[size_class]
+	return STRIKE_REACTION_PROFILES[FishState.SIZE_SMALL]
+
+
+func compute_size_class(weight_kg: float) -> String:
+	return FishState.compute_size_class(weight_kg, config.small_max_kg, config.medium_max_kg, config.large_max_kg)
 
 
 static func format_weight(weight_kg: float) -> String:
@@ -227,7 +304,8 @@ func force_bite(
 	state: GameState,
 	rod_sim: RodSimulator = null,
 	preferred_rod_id: String = "",
-	forced_species: String = ""
+	forced_species: String = "",
+	forced_weight_kg: float = -1.0
 ) -> FishState:
 	if state == null:
 		return null
@@ -260,7 +338,7 @@ func force_bite(
 
 	if target_rod_id.is_empty():
 		return null
-	return _spawn_fish_on_rod(state, target_rod_id, forced_species, rod_sim)
+	return _spawn_fish_on_rod(state, target_rod_id, forced_species, rod_sim, forced_weight_kg)
 
 
 func step(state: GameState, inputs: Dictionary, rod_sim: RodSimulator = null, delta: float = FIXED_DELTA) -> void:
@@ -298,7 +376,8 @@ func _spawn_fish_on_rod(
 	state: GameState,
 	rod_id: String,
 	forced_species: String,
-	rod_sim: RodSimulator
+	rod_sim: RodSimulator,
+	forced_weight_kg: float = -1.0
 ) -> FishState:
 	var rod := state.get_rod_state(rod_id)
 	if rod == null:
@@ -309,12 +388,14 @@ func _spawn_fish_on_rod(
 	var fish := FishState.new()
 	fish.rod_id = rod_id
 	fish.species = sp
-	fish.weight_kg = _rng.randf_range(float(spec["weight_min"]), float(spec["weight_max"]))
+	fish.weight_kg = maxf(0.01, forced_weight_kg) if forced_weight_kg > 0.0 else _rng.randf_range(float(spec["weight_min"]), float(spec["weight_max"]))
+	fish.size_class = compute_size_class(fish.weight_kg)
 	fish.state = FishState.STATE_HOOKED
 	fish.stamina = float(spec["initial_stamina"])
 	fish.fight_phase = _rng.randf_range(0.0, TAU)
 
-	var trips := bool(spec["trips_planer"])
+	var profile := get_strike_reaction_profile(fish.size_class)
+	var trips := bool(profile.get("trips_planer", false))
 	if fish.stamina > 0.05:
 		if trips and sp != FishState.SPECIES_ZANDER:
 			fish.surge_timer = _rng.randf_range(0.9, 1.4)
@@ -325,8 +406,17 @@ func _spawn_fish_on_rod(
 			fish.surge_timer = 0.0
 			fish.surge_cooldown = _rng.randf_range(0.8, 1.8)
 
-	if rod.planer.attached and trips:
-		rod.planer.state = PlanerBoard.STATE_TRIPPED
+	if rod.planer.attached:
+		if trips:
+			rod.planer.state = PlanerBoard.STATE_TRIPPED
+		var init_intensity := 0.90 if (fish.size_class == FishState.SIZE_MONSTER or fish.surge_timer > 0.0) else 0.35
+		rod.planer.pull_back_offset = lerpf(float(profile["pull_back_rest"]), float(profile["pull_back_burst"]), init_intensity)
+		rod.planer.submersion = lerpf(float(profile["submersion_rest"]), float(profile["submersion_burst"]), init_intensity)
+		rod.planer.flag_angle = lerpf(float(profile["flag_angle_rest"]), float(profile["flag_angle_burst"]), init_intensity)
+		rod.planer.shake_intensity = lerpf(float(profile["shake_rest"]), float(profile["shake_burst"]), init_intensity)
+		rod.planer.inward_drift_force = lerpf(float(profile["inward_drift_rest"]), float(profile["inward_drift_burst"]), init_intensity)
+	else:
+		rod.planer.reset_strike_reaction()
 
 	fish.surfaced = get_fish_distance(rod, rod_sim) <= config.surface_reveal_distance
 	state.fishes[rod_id] = fish
@@ -417,9 +507,12 @@ func _step_hooked_fish(
 			var label := "Kala" if not fish.surfaced else get_species_display_name(fish.species)
 			state.set_fish_notice("%s irtosi koukusta kesken väsytyksen!" % label, 4.0)
 			state.fishes.erase(fish.rod_id)
+			rod.planer.reset_strike_reaction()
 			if rod.planer.attached and rod.planer.state == PlanerBoard.STATE_TRIPPED:
 				rod.planer.state = PlanerBoard.STATE_TROLLING if state.boat.forward_speed >= rod_sim.config.min_pull_speed else PlanerBoard.STATE_DEPLOYING
 			return
+
+	_update_planer_strike_reaction(rod, fish, delta)
 
 	# Drag / räikkä calculation
 	var stamina_factor := 0.35 + 0.65 * fish.stamina
@@ -444,6 +537,7 @@ func _step_hooked_fish(
 		rod.trail_angle = wrapf(atan2(dx, dz), -PI, PI)
 		rod.planer.attached = false
 		rod.planer.lateral_offset = 0.0
+		rod.planer.reset_strike_reaction()
 		rod.planer.line_out = rod.planer.line_out + rod_sim.config.leader_length
 		rod.planer.state = PlanerBoard.STATE_TROLLING if state.boat.forward_speed >= rod_sim.config.min_pull_speed else PlanerBoard.STATE_DEPLOYING
 
@@ -476,6 +570,7 @@ func _step_ready_to_land(
 	fish.jump_progress = 0.0
 	fish.fight_phase = wrapf(fish.fight_phase + delta * 5.0, 0.0, TAU)
 	rod.planer.line_out = config.ready_to_land_distance
+	rod.planer.reset_strike_reaction()
 
 	var is_reeling := _is_player_reeling_rod(state, inputs, item)
 	if is_reeling:
@@ -505,6 +600,7 @@ func _clear_fish_and_reset_rod(state: GameState, item: HeldItem, rod: RodState, 
 	rod.planer.lateral_offset = 0.0
 	rod.planer.state = PlanerBoard.STATE_STOWED
 	rod.planer.snag_world_position = Vector2.ZERO
+	rod.planer.reset_strike_reaction()
 	rod.trail_factor = 0.0
 	rod.trail_angle = 0.0
 	if state.item_config != null and item != null:
@@ -515,6 +611,52 @@ func _clear_fish_and_reset_rod(state: GameState, item: HeldItem, rod: RodState, 
 				rod.planer.attached = bool(holder_cfg.get("default_planer_attached", false))
 	if rod_sim != null:
 		state.sync_rods_with_items()
+
+
+func _update_planer_strike_reaction(rod: RodState, fish: FishState, delta: float) -> void:
+	if rod == null or rod.planer == null or fish == null:
+		return
+	fish.size_class = compute_size_class(fish.weight_kg)
+	if not rod.planer.attached or rod.planer.state == PlanerBoard.STATE_TANGLED or rod.planer.state == PlanerBoard.STATE_SNAGGED:
+		rod.planer.pull_back_offset = 0.0
+		rod.planer.submersion = 0.0
+		rod.planer.shake_intensity = 0.0
+		rod.planer.inward_drift_force = 0.0
+		if rod.planer.state == PlanerBoard.STATE_TANGLED or rod.planer.state == PlanerBoard.STATE_SNAGGED:
+			rod.planer.flag_angle = -30.0
+		else:
+			rod.planer.flag_angle = 0.0
+		return
+
+	var profile := get_strike_reaction_profile(fish.size_class)
+	if bool(profile.get("trips_planer", false)) and rod.planer.state != PlanerBoard.STATE_TRIPPED:
+		rod.planer.state = PlanerBoard.STATE_TRIPPED
+
+	var wave := 0.5 + 0.5 * sin(fish.fight_phase * 0.5)
+	var cycle_intensity := 0.0
+	if fish.surge_timer > 0.0:
+		cycle_intensity = clampf(0.65 + 0.35 * wave, 0.0, 1.0)
+	else:
+		cycle_intensity = clampf(0.15 + 0.45 * wave, 0.0, 0.65)
+	if fish.size_class == FishState.SIZE_MONSTER and fish.hooked_time < 1.5:
+		cycle_intensity = maxf(cycle_intensity, 0.90)
+
+	var t_pull := lerpf(float(profile["pull_back_rest"]), float(profile["pull_back_burst"]), cycle_intensity)
+	var t_sub := lerpf(float(profile["submersion_rest"]), float(profile["submersion_burst"]), cycle_intensity)
+	var t_flag := lerpf(float(profile["flag_angle_rest"]), float(profile["flag_angle_burst"]), cycle_intensity)
+	var t_shake := lerpf(float(profile["shake_rest"]), float(profile["shake_burst"]), cycle_intensity)
+	var t_drift := lerpf(float(profile["inward_drift_rest"]), float(profile["inward_drift_burst"]), cycle_intensity)
+
+	if fish.stamina <= 0.05 and fish.size_class != FishState.SIZE_SMALL:
+		t_drift = 0.0
+		t_sub *= 0.35
+		t_shake *= 0.35
+
+	rod.planer.pull_back_offset = move_toward(rod.planer.pull_back_offset, t_pull, config.reaction_pull_back_rate * delta)
+	rod.planer.submersion = move_toward(rod.planer.submersion, t_sub, config.reaction_submersion_rate * delta)
+	rod.planer.flag_angle = move_toward(rod.planer.flag_angle, t_flag, config.reaction_flag_rate * delta)
+	rod.planer.shake_intensity = move_toward(rod.planer.shake_intensity, t_shake, config.reaction_shake_rate * delta)
+	rod.planer.inward_drift_force = move_toward(rod.planer.inward_drift_force, t_drift, config.reaction_drift_rate * delta)
 
 
 func _is_player_reeling_rod(state: GameState, inputs: Dictionary, item: HeldItem) -> bool:

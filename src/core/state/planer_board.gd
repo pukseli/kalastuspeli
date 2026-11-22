@@ -27,6 +27,19 @@ var lateral_offset: float = 0.0
 var line_out: float = 0.0
 var state: String = STATE_STOWED
 var snag_world_position: Vector2 = Vector2.ZERO
+var pull_back_offset: float = 0.0
+var submersion: float = 0.0
+var flag_angle: float = 0.0
+var shake_intensity: float = 0.0
+var inward_drift_force: float = 0.0
+
+
+func reset_strike_reaction() -> void:
+	pull_back_offset = 0.0
+	submersion = 0.0
+	flag_angle = 0.0
+	shake_intensity = 0.0
+	inward_drift_force = 0.0
 
 
 func is_in_water() -> bool:
@@ -47,6 +60,11 @@ func clone() -> PlanerBoard:
 	copy.line_out = line_out
 	copy.state = state
 	copy.snag_world_position = snag_world_position
+	copy.pull_back_offset = pull_back_offset
+	copy.submersion = submersion
+	copy.flag_angle = flag_angle
+	copy.shake_intensity = shake_intensity
+	copy.inward_drift_force = inward_drift_force
 	return copy
 
 
@@ -61,6 +79,11 @@ func to_dict() -> Dictionary:
 			"x": snag_world_position.x,
 			"y": snag_world_position.y,
 		},
+		"pull_back_offset": pull_back_offset,
+		"submersion": submersion,
+		"flag_angle": flag_angle,
+		"shake_intensity": shake_intensity,
+		"inward_drift_force": inward_drift_force,
 	}
 
 
@@ -80,3 +103,8 @@ func from_dict(data: Dictionary) -> void:
 		snag_world_position = Vector2(float(sd.get("x", 0.0)), float(sd.get("y", 0.0)))
 	else:
 		snag_world_position = Vector2.ZERO
+	pull_back_offset = maxf(0.0, float(data.get("pull_back_offset", 0.0)))
+	submersion = clampf(float(data.get("submersion", 0.0)), 0.0, 1.0)
+	flag_angle = clampf(float(data.get("flag_angle", 0.0)), -90.0, 45.0)
+	shake_intensity = clampf(float(data.get("shake_intensity", 0.0)), 0.0, 1.0)
+	inward_drift_force = maxf(0.0, float(data.get("inward_drift_force", 0.0)))

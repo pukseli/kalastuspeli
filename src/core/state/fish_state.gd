@@ -26,9 +26,22 @@ const VALID_SPECIES: Array[String] = [
 	SPECIES_BLUE_WHALE,
 ]
 
+const SIZE_SMALL: String = "SMALL"
+const SIZE_MEDIUM: String = "MEDIUM"
+const SIZE_LARGE: String = "LARGE"
+const SIZE_MONSTER: String = "MONSTER"
+
+const VALID_SIZE_CLASSES: Array[String] = [
+	SIZE_SMALL,
+	SIZE_MEDIUM,
+	SIZE_LARGE,
+	SIZE_MONSTER,
+]
+
 var rod_id: String = ""
 var species: String = SPECIES_PERCH
 var weight_kg: float = 0.5
+var size_class: String = SIZE_SMALL
 var state: String = STATE_HOOKED
 var stamina: float = 1.0
 var drag_rate: float = 0.0
@@ -54,11 +67,27 @@ func is_drag_active() -> bool:
 	return drag_rate > 0.01
 
 
+static func compute_size_class(
+	weight: float,
+	small_max_kg: float = 1.0,
+	medium_max_kg: float = 4.0,
+	large_max_kg: float = 8.0
+) -> String:
+	if weight < small_max_kg:
+		return SIZE_SMALL
+	if weight < medium_max_kg:
+		return SIZE_MEDIUM
+	if weight <= large_max_kg:
+		return SIZE_LARGE
+	return SIZE_MONSTER
+
+
 func clone() -> FishState:
 	var copy := FishState.new()
 	copy.rod_id = rod_id
 	copy.species = species
 	copy.weight_kg = weight_kg
+	copy.size_class = size_class
 	copy.state = state
 	copy.stamina = stamina
 	copy.drag_rate = drag_rate
@@ -78,6 +107,7 @@ func to_dict() -> Dictionary:
 		"rod_id": rod_id,
 		"species": species,
 		"weight_kg": weight_kg,
+		"size_class": size_class,
 		"state": state,
 		"stamina": stamina,
 		"drag_rate": drag_rate,
@@ -97,6 +127,8 @@ func from_dict(data: Dictionary) -> void:
 	var next_species := str(data.get("species", SPECIES_PERCH))
 	species = next_species if VALID_SPECIES.has(next_species) else SPECIES_PERCH
 	weight_kg = maxf(0.01, float(data.get("weight_kg", 0.5)))
+	var next_size := str(data.get("size_class", ""))
+	size_class = next_size if VALID_SIZE_CLASSES.has(next_size) else compute_size_class(weight_kg)
 	var next_state := str(data.get("state", STATE_HOOKED))
 	state = next_state if VALID_STATES.has(next_state) else STATE_HOOKED
 	stamina = clampf(float(data.get("stamina", 1.0)), 0.0, 1.0)

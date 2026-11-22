@@ -179,6 +179,10 @@ func _init_trolling_resources() -> void:
 	flag_normal.albedo_color = Color(1.0, 0.90, 0.15)
 	_flag_mats["normal"] = flag_normal
 
+	var flag_bobbing := StandardMaterial3D.new()
+	flag_bobbing.albedo_color = Color(1.0, 0.55, 0.12)
+	_flag_mats["bobbing"] = flag_bobbing
+
 	var flag_tripped := StandardMaterial3D.new()
 	flag_tripped.albedo_color = Color(0.98, 0.18, 0.18)
 	_flag_mats["tripped"] = flag_tripped
@@ -389,7 +393,7 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 							]
 					else:
 						var big_or_tripped := (
-							FishSimulator.species_trips_planer(active_fish.species)
+							bool(FishSimulator.get_strike_reaction_profile(active_fish.size_class).get("trips_planer", false))
 							or active_rod.planer.state == PlanerBoard.STATE_TRIPPED
 							or active_fish.is_drag_active()
 						)
@@ -518,7 +522,7 @@ func _build_fish_alert_text(game_state: GameState) -> String:
 		if rod == null or item == null:
 			continue
 		var is_tripped := rod.planer.state == PlanerBoard.STATE_TRIPPED
-		var loud_fish := fish != null and (FishSimulator.species_trips_planer(fish.species) or fish.is_drag_active())
+		var loud_fish := fish != null and (bool(FishSimulator.get_strike_reaction_profile(fish.size_class).get("trips_planer", false)) or fish.is_drag_active())
 		if is_tripped or loud_fish:
 			tripped_labels.append(_format_held_item_label(item))
 		if fish != null and fish.is_drag_active():
@@ -592,11 +596,24 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 
 		if rod.planer.attached:
 			var board_2d := _rod_simulator_helper.get_board_world_pos_2d(game_state, item, rod)
-			var board_world := Vector3(board_2d.x, WATER_Y + 0.05, board_2d.y)
+			var submersion := rod.planer.submersion
+			var shake := rod.planer.shake_intensity
+			var phase := fish.fight_phase if fish != null else float(game_state.tick) * 0.25
+			var shake_x := sin(phase * 11.0) * 0.09 * shake
+			var shake_y := cos(phase * 17.0) * 0.04 * shake
+			var shake_z := sin(phase * 13.0) * 0.08 * shake
+			var board_y := WATER_Y + 0.05 - submersion * 0.65 + shake_y
+			var board_world := Vector3(board_2d.x + shake_x, board_y, board_2d.y + shake_z)
+			var board_pitch := clampf(rod.planer.pull_back_offset * 0.085, 0.0, 0.60)
+			var board_roll := sin(phase * 9.0) * 0.35 * shake
+			var board_yaw := game_state.boat.heading + rod.trail_angle + cos(phase * 7.0) * 0.18 * shake
 			active_planers[rid_str] = {
 				"pos": board_world,
 				"state": rod.planer.state,
-				"yaw": game_state.boat.heading + rod.trail_angle,
+				"yaw": board_yaw,
+				"pitch": board_pitch,
+				"roll": board_roll,
+				"flag_angle": rod.planer.flag_angle,
 			}
 			_append_curved_segment(line_vertices, tip_world, board_world, 3, 0.22)
 			_append_curved_segment(line_vertices, board_world, end_world, 2, 0.0)
@@ -625,8 +642,8 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			planers_container.add_child(p_node)
 			_planer_views[rid] = p_node
 		p_node.position = p_info["pos"]
-		p_node.rotation = Vector3(0.0, float(p_info["yaw"]), 0.0)
-		_update_planer_visual_state(p_node, str(p_info["state"]))
+		p_node.rotation = Vector3(float(p_info["pitch"]), float(p_info["yaw"]), float(p_info["roll"]))
+		_update_planer_visual_state(p_node, str(p_info["state"]), float(p_info["flag_angle"]))
 
 	for existing_lid in _lure_views.keys():
 		if not active_lures.has(existing_lid):
@@ -682,7 +699,8 @@ func _append_curved_segment(out: Array[Vector3], start_pos: Vector3, end_pos: Ve
 		var frac := float(i) / float(count)
 		var pt := start_pos.lerp(end_pos, frac)
 		pt.y -= sin(frac * PI) * sag
-		pt.y = maxf(pt.y, WATER_Y + 0.03)
+		var floor_y := minf(WATER_Y + 0.03, minf(start_pos.y, end_pos.y))
+		pt.y = maxf(pt.y, floor_y)
 		out.append(prev)
 		out.append(pt)
 		prev = pt
@@ -712,7 +730,7 @@ func _create_planer_node(rod_id: String) -> Node3D:
 	return root
 
 
-func _update_planer_visual_state(planer_node: Node3D, state_name: String) -> void:
+func _update_planer_visual_state(planer_node: Node3D, state_name: String, flag_angle: float = 0.0) -> void:
 	var body := planer_node.get_node_or_null("Body") as MeshInstance3D
 	var flag_pivot := planer_node.get_node_or_null("FlagPivot") as Node3D
 	var flag := planer_node.get_node_or_null("FlagPivot/Flag") as MeshInstance3D
@@ -726,14 +744,20 @@ func _update_planer_visual_state(planer_node: Node3D, state_name: String) -> voi
 			body.material_override = _planer_body_mats["normal"]
 
 	if flag_pivot != null and flag != null:
-		if state_name == PlanerBoard.STATE_TRIPPED:
-			flag_pivot.rotation_degrees = Vector3(-65.0, 0.0, 0.0)
+		var eff_angle := flag_angle
+		if absf(eff_angle) <= 0.01:
+			if state_name == PlanerBoard.STATE_TRIPPED:
+				eff_angle = -65.0
+			elif state_name == PlanerBoard.STATE_TANGLED or state_name == PlanerBoard.STATE_SNAGGED:
+				eff_angle = -30.0
+			else:
+				eff_angle = 0.0
+		flag_pivot.rotation_degrees = Vector3(eff_angle, 0.0, 0.0)
+		if state_name == PlanerBoard.STATE_TRIPPED or state_name == PlanerBoard.STATE_TANGLED or state_name == PlanerBoard.STATE_SNAGGED or absf(eff_angle) >= 45.0:
 			flag.material_override = _flag_mats["tripped"]
-		elif state_name == PlanerBoard.STATE_TANGLED or state_name == PlanerBoard.STATE_SNAGGED:
-			flag_pivot.rotation_degrees = Vector3(-30.0, 0.0, 0.0)
-			flag.material_override = _flag_mats["tripped"]
+		elif absf(eff_angle) >= 5.0:
+			flag.material_override = _flag_mats["bobbing"]
 		else:
-			flag_pivot.rotation_degrees = Vector3.ZERO
 			flag.material_override = _flag_mats["normal"]
 
 

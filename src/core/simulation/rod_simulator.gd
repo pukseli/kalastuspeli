@@ -35,6 +35,7 @@ class Config extends RefCounted:
 	var min_eff_length_for_lag: float = 4.0
 	var reel_pull_factor: float = 0.45
 	var reel_inward_rate: float = 4.0
+	var drift_tangle_min_force: float = 1.0
 
 var config: Config = Config.new()
 
@@ -196,6 +197,7 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 		rod.planer.line_out = 0.0
 		rod.planer.lateral_offset = 0.0
 		rod.planer.state = PlanerBoard.STATE_STOWED
+		rod.planer.reset_strike_reaction()
 		rod.trail_factor = 0.0
 		rod.trail_angle = 0.0
 		if not item.is_carried() and not holder_cfg.is_empty():
@@ -210,7 +212,18 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 
 	if rod.planer.attached:
 		if rod.planer.state == PlanerBoard.STATE_TANGLED or rod.planer.state == PlanerBoard.STATE_SNAGGED:
+			rod.planer.pull_back_offset = 0.0
+			rod.planer.submersion = 0.0
+			rod.planer.shake_intensity = 0.0
+			rod.planer.inward_drift_force = 0.0
+			rod.planer.flag_angle = -30.0
 			return
+		if not state.has_fish_on_rod(rod.rod_id):
+			rod.planer.pull_back_offset = move_toward(rod.planer.pull_back_offset, 0.0, 12.0 * delta)
+			rod.planer.submersion = move_toward(rod.planer.submersion, 0.0, 4.0 * delta)
+			rod.planer.flag_angle = move_toward(rod.planer.flag_angle, 0.0, 240.0 * delta)
+			rod.planer.shake_intensity = move_toward(rod.planer.shake_intensity, 0.0, 6.0 * delta)
+			rod.planer.inward_drift_force = move_toward(rod.planer.inward_drift_force, 0.0, 8.0 * delta)
 		var l_max_hard := minf(config.max_lateral_offset, rod.planer.line_out * sin(deg_to_rad(config.max_spread_angle_deg)))
 		rod.planer.lateral_offset = clampf(rod.planer.lateral_offset, -l_max_hard, l_max_hard)
 		var tip_local := get_rod_tip_local(state, item)
@@ -231,6 +244,15 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 			var max_sin := maxf(0.01, sin(deg_to_rad(config.max_spread_angle_deg)))
 			var angle_ratio := clampf(sin(deg_to_rad(rod_max_angle_deg)) / max_sin, 0.45, 1.0)
 			var step_rate := config.spread_rate * maxf(pull, 0.25) * angle_ratio
+			var rod_fish := state.get_fish_state(rod.rod_id)
+			var active_drift := rod.planer.inward_drift_force if (rod_fish == null or rod_fish.stamina > 0.05 or rod_fish.size_class == FishState.SIZE_SMALL) else 0.0
+			if active_drift > 0.001:
+				if active_drift >= config.drift_tangle_min_force:
+					x_target = 0.0
+					step_rate = maxf(step_rate, active_drift)
+				else:
+					x_target *= 0.65
+					step_rate = maxf(step_rate, active_drift)
 			if is_reeling and absf(x_target) < absf(rod.planer.lateral_offset):
 				step_rate = maxf(step_rate, config.reel_inward_rate)
 			rod.planer.lateral_offset = move_toward(rod.planer.lateral_offset, x_target, step_rate * delta)
@@ -241,6 +263,10 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 					rod.planer.state = PlanerBoard.STATE_DEPLOYING
 		else:
 			var collapse_v := config.collapse_rate + (config.min_pull_speed - v_board) * config.stall_collapse_gain
+			var rod_fish_stall := state.get_fish_state(rod.rod_id)
+			var active_stall_drift := rod.planer.inward_drift_force if (rod_fish_stall == null or rod_fish_stall.stamina > 0.05 or rod_fish_stall.size_class == FishState.SIZE_SMALL) else 0.0
+			if active_stall_drift > 0.001:
+				collapse_v = maxf(collapse_v, active_stall_drift)
 			if is_reeling:
 				collapse_v = maxf(collapse_v, config.reel_inward_rate)
 			rod.planer.lateral_offset = move_toward(rod.planer.lateral_offset, 0.0, collapse_v * delta)
@@ -279,7 +305,16 @@ func _check_planer_tangles(
 		var rod := state.get_rod_state(rid)
 		if item == null or rod == null:
 			continue
-		if state.has_fish_on_rod(rid):
+		var has_fish := state.has_fish_on_rod(rid)
+		var fish := state.get_fish_state(rid)
+		var fish_energetic := fish != null and fish.stamina > 0.05
+		var unattended_heavy_drift := (
+			has_fish
+			and fish_energetic
+			and not item.is_carried()
+			and rod.planer.inward_drift_force >= config.drift_tangle_min_force
+		)
+		if has_fish and not unattended_heavy_drift:
 			continue
 		if not rod.planer.attached or not rod.planer.is_active_trolling():
 			continue
@@ -290,7 +325,7 @@ func _check_planer_tangles(
 		var board_x := tip_local.x + rod.planer.lateral_offset
 		var v_board := state.boat.forward_speed + omega * board_x
 		var had_spread := float(prev_abs_lat.get(rid, 0.0)) >= config.hull_tangle_margin
-		if sharp_turn and v_board < config.min_pull_speed and absf(rod.planer.lateral_offset) < config.hull_tangle_margin and had_spread and not reeling_rods.has(rid):
+		if not unattended_heavy_drift and sharp_turn and v_board < config.min_pull_speed and absf(rod.planer.lateral_offset) < config.hull_tangle_margin and had_spread and not reeling_rods.has(rid):
 			rod.planer.state = PlanerBoard.STATE_TANGLED
 			continue
 
@@ -301,6 +336,7 @@ func _check_planer_tangles(
 			"tip": Vector2(tip_3d.x, tip_3d.z),
 			"pos": get_board_world_pos_2d(state, item, rod),
 			"prev_abs_lat": float(prev_abs_lat.get(rid, absf(rod.planer.lateral_offset))),
+			"drift_risk": unattended_heavy_drift,
 		})
 
 	for i in range(active_entries.size()):
@@ -338,9 +374,20 @@ func _check_planer_tangles(
 			)
 			var hit_by_turn := sharp_turn and either_spread and (dist <= config.board_tangle_distance or crosses)
 			var hit_by_approach := both_trolling and dist <= config.board_tangle_distance and approaching
-			if hit_by_turn or hit_by_approach:
+			var either_drift := bool(a.get("drift_risk", false)) or bool(b.get("drift_risk", false))
+			var drift_cross := false
+			if either_drift:
+				drift_cross = Geometry2D.segment_intersects_segment(tip_a, pos_a, tip_b, pos_b) != null
+			var hit_by_drift := either_drift and (dist <= config.board_tangle_distance or drift_cross)
+			if hit_by_turn or hit_by_approach or hit_by_drift:
 				rod_a.planer.state = PlanerBoard.STATE_TANGLED
 				rod_b.planer.state = PlanerBoard.STATE_TANGLED
+				for tangled_rod in [rod_a, rod_b]:
+					tangled_rod.planer.pull_back_offset = 0.0
+					tangled_rod.planer.submersion = 0.0
+					tangled_rod.planer.shake_intensity = 0.0
+					tangled_rod.planer.inward_drift_force = 0.0
+					tangled_rod.planer.flag_angle = -30.0
 
 
 func _check_obstacles(state: GameState, rod_ids: Array[String], obstacles: Array) -> void:
@@ -418,7 +465,7 @@ func get_board_local_pos_2d(state: GameState, item: HeldItem, rod: RodState) -> 
 	var dx := clampf(rod.planer.lateral_offset * eff_factor, -max_dx, max_dx)
 	var trail_z := sqrt(maxf(0.0, eff_out * eff_out - dx * dx))
 	var bx := tip_local.x + dx
-	var bz := tip_local.z + trail_z
+	var bz := tip_local.z + trail_z + rod.planer.pull_back_offset * eff_factor
 	if item != null and item.is_carried() and rod.is_deployed() and absf(bx) < 1.9 and bz < 3.8:
 		bx = float(rod.planer.side) * 2.0
 	return Vector2(bx, bz)

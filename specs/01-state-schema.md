@@ -102,8 +102,13 @@
 | `line_out` | `float` | `0.0` | Vavasta ulkona olevan siiman pituus metreinä (**yksi totuuden lähde**) |
 | `state` | `String` | `"STOWED"` | Tila: `"STOWED"`, `"DEPLOYING"`, `"TROLLING"`, `"TRIPPED"`, `"TANGLED"`, `"SNAGGED"` |
 | `snag_world_position` | `Vector2` | `Vector2.ZERO` | Maailman 2D-lukituspiste esteeseen tarttumisessa (`SNAGGED`) |
+| `pull_back_offset` | `float` | `0.0` | Kalan vedon aiheuttama lisäjättämä normaalin uintipaikan taakse metreinä (lisätty S9a) |
+| `submersion` | `float` | `0.0` | Plaanarin uppoamissyvyys (`0.0` = pinnalla, `1.0` = pinnan alla, lisätty S9a) |
+| `flag_angle` | `float` | `0.0` | Tärppilipun jatkuva kulma asteina (`0° .. -78°`, lisätty S9a) |
+| `shake_intensity` | `float` | `0.0` | Kalan päänravistuksen nykimisintensiteetti (`0.0 .. 1.0`, lisätty S9a) |
+| `inward_drift_force` | `float` | `0.0` | Kalan sisäänpäin keskilinjaan vetävä voima `m/s` (lisätty S9a) |
 
-**Apumetodit:** `is_in_water() -> bool`, `is_active_trolling() -> bool`, `clone() -> PlanerBoard`
+**Apumetodit:** `is_in_water() -> bool`, `is_active_trolling() -> bool`, `reset_strike_reaction() -> void`, `clone() -> PlanerBoard`
 **Johdetut arvot (ei replikoida):** Plaanarin ja vieheen 2D-maailmasijainti lasketaan `RodSimulator`-luokassa veneen sijainnista, suunnasta ja kentistä `lateral_offset` / `line_out`.
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
@@ -128,6 +133,7 @@
 | `rod_id` | `String` | `""` | Vastaavan vavan tunniste (`"rod_1" .. "rod_6"`) |
 | `species` | `String` | `"perch"` | Laji: `"vendace"`, `"perch"`, `"zander"`, `"pike"`, `"orca"`, `"blue_whale"` |
 | `weight_kg` | `float` | `0.5` | Kalan yksilöllinen paino kilogrammoina |
+| `size_class` | `String` | `"SMALL"` | Kokoluokka painosta: `"SMALL"` (`< 1 kg`), `"MEDIUM"` (`1–4 kg`), `"LARGE"` (`4–8 kg`), `"MONSTER"` (`> 8 kg`) |
 | `state` | `String` | `"HOOKED"` | Tila: `"HOOKED"` tai `"READY_TO_LAND"` |
 | `stamina` | `float` | `1.0` | Jäljellä oleva kestävyys (`0.0 .. 1.0`, pienet lajit `0.0`) |
 | `drag_rate` | `float` | `0.0` | Nykyinen jarruluisto- ja räikkänopeus (`m/s`) |
@@ -140,7 +146,7 @@
 | `surfaced` | `bool` | `false` | Onko kala noussut pintaan näkyviin (`<= 8.0 m`) |
 | `fight_phase` | `float` | `0.0` | Jatkuva taisteluvärinän vaihe radiaaneina (`0 .. TAU`) |
 
-**Apumetodit:** `is_ready_to_land() -> bool`, `is_jumping() -> bool`, `is_drag_active() -> bool`, `clone() -> FishState`
+**Apumetodit:** `is_ready_to_land() -> bool`, `is_jumping() -> bool`, `is_drag_active() -> bool`, `compute_size_class(...) -> String`, `clone() -> FishState`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
 ---

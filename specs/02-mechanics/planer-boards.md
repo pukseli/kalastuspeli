@@ -30,6 +30,11 @@ Pelissä käytetään **pikkuplaanaria** eli siimaan vavan ja vieheen väliin ki
 | `line_out` | `float` | `0.0` | Vavasta plaanarille (tai suorana vieheelle) laskettu siimapituus (m) |
 | `state` | `String` | `"STOWED"` | Nykyinen tila: `STOWED`, `DEPLOYING`, `TROLLING`, `TRIPPED`, `TANGLED`, `SNAGGED` |
 | `snag_world_position` | `Vector2` | `Vector2.ZERO` | Maailmankoordinaatiston lukituspiste `SNAGGED`-tilassa (`S16`) |
+| `pull_back_offset` | `float` | `0.0` | Kalan vedon aiheuttama lisäjättämä normaalin uintipaikan taakse (m) |
+| `submersion` | `float` | `0.0` | Plaanarin uppoamissyvyys (`0.0` = pinnalla, `1.0` = kokonaan pinnan alla) |
+| `flag_angle` | `float` | `0.0` | Huomiolipun kallistuskulma asteina (`0°` = pystyssä, `-30°` = nykii/puoliväli, `-65° .. -78°` = kaatunut taakse) |
+| `shake_intensity` | `float` | `0.0` | Kalan päänravistusten aiheuttama tärinäintensiteetti (`0.0 .. 1.0`) |
+| `inward_drift_force` | `float` | `0.0` | Kalan sisäänpäin keskilinjaan vetävä voima (`m/s`) |
 
 ### 2.2 Tilakone
 
@@ -83,7 +88,7 @@ $$\vec{u}_{\text{fwd}} = \begin{pmatrix} -\sin h \\ -\cos h \end{pmatrix}, \quad
 
 Vavan kärjen vene-paikallinen sijainti on $(x_{\text{tip}}, z_{\text{tip}})$. Kun plaanari ei ole `SNAGGED`-tilassa, sen jättämä peräetäisyys ja maailmasijainti johdetaan suoraan veneen ja plaanarin tilasta:
 
-$$\Delta x = \text{lateral\_offset} - x_{\text{tip}}, \qquad \text{trail\_z} = \sqrt{\max\!\left(0.0,\; \text{line\_out}^2 - \Delta x^2\right)}$$
+$$\Delta x = \text{lateral\_offset} - x_{\text{tip}}, \qquad \text{trail\_z} = \sqrt{\max\!\left(0.0,\; \text{line\_out}^2 - \Delta x^2\right)} + \text{pull\_back\_offset} \cdot \text{eff\_factor}$$
 
 $$\vec{p}_{\text{board}} = \vec{p}_{\text{boat},xz} + \text{lateral\_offset}\,\vec{u}_{\text{right}} + (z_{\text{tip}} + \text{trail\_z})\,\vec{u}_{\text{stern}}$$
 
@@ -130,11 +135,21 @@ Esteet esitetään kevyellä 2D-ympyrärajapinnalla `{position: Vector2, radius:
 - Osuma vaihtaa tilaksi `SNAGGED` ja tallentaa osumakohdan kenttään `snag_world_position`.
 - Veneen jatkaessa eteenpäin etäisyys vavan kärjestä `snag_world_position`-pisteeseen ylittää `line_out`-arvon, mikä kasvattaa siiman kireyttä (`snag_tension_rate`) ja katkaisee siiman (`S11`), ellei kippari pysäytä tai peruuta vapauttaakseen plaanarin.
 
-### 3.5 D. Tärppi (`TRIPPED`), kelaus ja irrotus (Tiimityö)
+### 3.5 D. Tärppi (`TRIPPED`), kalan koon mukainen reaktio, kelaus ja irrotus (Tiimityö)
 
-1. **Tärppisignaali (`S9`):** Kalan iskiessä plaanarin takana olevaan vieheeseen plaanarin tila vaihtuu `TROLLING -> TRIPPED`. Vetoteho putoaa kertoimeen `tripped_pull_factor = 0.15`, plaanari nykäisee taakse/sisään kohti veneen vanavettä ja huomiolippu kaatuu/vaihtaa väriä.
-2. **Kelaus laidalle:** Pelaaja kelaa siimaa sisään (`Space`). Kun `line_out <= detach_distance` (`2.0 m`), plaanari on veneen vieressä.
-3. **Irrotuslukko ja tiimityö (`S10`):** Jos `attached == true`, kalaa ei voi vielä haavita. Vavan lähellä (joko kelaaja laskettuaan tai vieressä seisova tiimikaveri vapailla käsillä) tehdään lyhyt `E`-interaktio (`detach_duration = 0.5 s`), joka asettaa `attached = false`, `state = STOWED` ja jättää `line_out = leader_length`-mitan (peruke), jonka jälkeen kala kelataan loppuun ja haavitaan.
+1. **Kokoluokat (`FishState.size_class` / `FishSimulator`):** Kalan paino (`weight_kg`) määrittää keskitetysti neljä kokoluokkaa: `SMALL` (`< 1.0 kg`), `MEDIUM` (`1.0 .. < 4.0 kg`), `LARGE` (`4.0 .. 8.0 kg`) ja `MONSTER` (`> 8.0 kg`).
+2. **Kalan koon mukaiset reaktioprofiilit (`STRIKE_REACTION_PROFILES`):**
+
+| Kokoluokka | Painoraja | Tila (`trips_planer`) | `pull_back_offset` (lepo..syöksy) | `submersion` (lepo..syöksy) | `flag_angle` (lepo..syöksy) | `shake_intensity` (lepo..syöksy) | `inward_drift_force` (lepo..syöksy) | Sotkuriski (`can_drift_tangle`) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `SMALL` | `< 1.0 kg` | `TROLLING` (ei laukaise) | `0.35 .. 0.80` m | `0.00 .. 0.00` | `-12° .. -30°` (`BOBBING`) | `0.08 .. 0.22` | `0.00 .. 0.00` m/s | Ei |
+| `MEDIUM` | `1.0–4.0 kg` | `TRIPPED` | `1.60 .. 2.80` m | `0.00 .. 0.12` | `-62° .. -70°` | `0.22 .. 0.55` | `0.35 .. 0.75` m/s | Ei |
+| `LARGE` | `4.0–8.0 kg` | `TRIPPED` | `3.20 .. 5.20` m | `0.30 .. 0.80` | `-68° .. -75°` | `0.35 .. 0.80` | `1.35 .. 2.60` m/s | Kyllä (`>= 1.0` m/s) |
+| `MONSTER` | `> 8.0 kg` | `TRIPPED` | `5.00 .. 7.50` m | `0.82 .. 1.00` | `-75° .. -78°` | `0.50 .. 1.00` | `2.40 .. 4.20` m/s | Kyllä (`>= 1.0` m/s) |
+
+3. **Jatkuva taistelusykli vs. `SNAGGED`:** Elävän kalan reaktiot moduloidaan jatkuvasti syöksy- ja lepovaiheiden (`surge_timer` + `fight_phase`) funktiona (`lepo ↔ syöksy`), jolloin `pull_back_offset`, `submersion`, `flag_angle`, `shake_intensity` ja `inward_drift_force` elävät ajassa. Staattisessa `SNAGGED`-tilassa arvot pysyvät nollana ja muuttumattomina (`flag_angle = -30°`).
+4. **Kaaos & sotkuriski (`LARGE` / `MONSTER`):** Jos `LARGE`- tai `MONSTER`-kala jää hoitamatta telineeseen ja sen `inward_drift_force >= drift_tangle_min_force` (`1.0 m/s`), se vetää plaanaria voimakkaasti kohti keskilinjaa ja voi laukaista `TANGLED`-sotkun kohdatessaan sisemmän plaanarin (`board_tangle_distance` tai risteävä siima). Vavan poiminta käteen tai kalan väsyminen loppuun (`stamina <= 0.05`) pysäyttää sotkevan vedon.
+5. **Kelaus ja irrotus:** Pelaaja kelaa siimaa sisään (`Space`). `S9a`:ssa plaanari ohittuu automaattisesti etäisyydellä `2.0 m` (`detach_distance`); `S9b`/`S10` tuo manuaalisen `E`-irrotuksen (`detach_duration = 0.5 s`).
 
 ### 3.6 E. Vaikutus kalastustehokkuuteen
 
@@ -151,8 +166,8 @@ Toteutus pidetään puhtaana koodipohjaisena low-poly-grafiikkana perunakonebudj
 
 | Elementti | Primitiivi & materiaali | Tilavisualisointi |
 | :--- | :--- | :--- |
-| **Plaanari** | Kirkkaan oranssi tai keltainen `BoxMesh`-kiila/laatikko veden pinnalla (`y = -0.25`) plaanarin maailmasijainnissa $\vec{p}_{\text{board}}$, suunnattuna veneen `heading`-kulman mukaisesti. | `TROLLING`/`DEPLOYING`: vakaa oranssi/keltainen; `TANGLED`: violetti/vilkkuva; `SNAGGED`: paikallaan karikossa punaisena; `STOWED`: piilotettu. |
-| **Huomiolippu** | Ohut pystysylinteri/laatikko plaanarin päällä (`CylinderMesh` / `BoxMesh`). | Normaali uistelu: pystyssä (`0°`, keltainen/vihreä). `TRIPPED` (tärppi): kallistuu taakse (`-65°`) ja vaihtaa värin kirkkaanpunaiseksi. |
+| **Plaanari** | Kirkkaan oranssi tai keltainen `BoxMesh`-kiila/laatikko veden pinnalla (`y = WATER_Y + 0.05 - submersion * 0.65`) plaanarin maailmasijainnissa $\vec{p}_{\text{board}}$, suunnattuna veneen `heading`-kulman mukaisesti. | `TROLLING`/`DEPLOYING`: normaali oranssi; `submersion > 0`: painuu pinnan alle; `pull_back_offset > 0`: kallistuu perä alaspäin (`pitch`); `shake_intensity > 0`: nopea värinä/kallistelu; `TANGLED`: violetti; `SNAGGED`: punainen. |
+| **Huomiolippu** | Ohut pystysylinteri/laatikko plaanarin päällä (`CylinderMesh` / `BoxMesh`). | Kääntyy jatkuvasti `flag_angle`-kulmaan (`0°` keltainen, `-5°..-45°` `BOBBING` meripihkanoranssi, `<= -45°` `TRIPPED` kirkkaanpunainen). |
 | **Siima** | Yksi yhteinen `ImmediateMesh` (`PRIMITIVE_LINES`, `1` draw call kaikille vavoille). | Piirtää kaksi segmenttiä per aktiivinen plaanarivapa: (1) vavan kärki → plaanari $\vec{p}_{\text{board}}$, (2) plaanari $\vec{p}_{\text{board}}$ → viehe $\vec{p}_{\text{lure}}$ veden pinnassa. |
 
 ---
@@ -167,6 +182,10 @@ Toteutus pidetään puhtaana koodipohjaisena low-poly-grafiikkana perunakonebudj
 | **2. Pysähdys vetää plaanarit sisään** | Plaanarit levitettyinä sivulle (`abs(lateral_offset) > 5.0`, `v_fwd = 3.0 m/s`) | Vene pysäytetään (`v_fwd = 0.0`) ja simulaatiota ajetaan | Plaanarien `abs(lateral_offset)` pienenee yksiselitteisesti jokaisen askeljakson aikana kohti `0.0`:aa. |
 | **3. Jyrkkä käännös aiheuttaa `TANGLED`-tilan** | Kaksi saman puolen plaanaria levitettynä vierekkäin (esim. vasemman laidan `-2` ja `-3` eri `line_out`-mitoilla) | Vene tekee jyrkän sisäkaarteen ($\omega > 0.5\text{ rad/s}$) | Sisäkaarteen plaanarit menettävät virtausnopeutta, lähestyvät toisiaan (tai kylkeä) alle kynnysarvon ja vaihtavat tilaksi `"TANGLED"`. |
 | **4. Esteeseen osuminen aiheuttaa `SNAGGED`-tilan** | Aktiivinen plaanari vedessä ja 2D-ympyräeste veneen/plaanarin reitillä | Vene kuljettaa plaanarin tai sen vieheen esteen säteen sisään | Plaanarin `state` vaihtuu tilaksi `"SNAGGED"` ja `snag_world_position` lukittuu osumapisteeseen. |
+| **5. `SMALL` vs. `MEDIUM` tärppireaktio** | Kaksi aktiivista plaanaria uistelussa | Toiseen iskee `SMALL`-kala (`< 1 kg`) ja toiseen `MEDIUM`-kala (`1–4 kg`) | `SMALL` pitää `submersion == 0.0` ja pienemmän `pull_back_offset`-arvon kuin `MEDIUM` eikä laukaise lippua kokonaan. |
+| **6. `MONSTER`-tärppi upottaa ja vetää sisään** | Aktiivinen plaanari uistelussa | Kiinni iskee `MONSTER`-kala (`> 8 kg`) | `submersion > 0.8` ja `inward_drift_force` kasvaa merkittävästi vetäen plaanaria kohti veneen keskilinjaa. |
+| **7. Elävän kalan taistelusykli vs. `SNAGGED`** | Elävä kala kiinni vs. `SNAGGED`-plaanari | Simulaatiota ajetaan usean sekunnin yli | Elävän kalan `pull_back_offset` ja `shake_intensity` vaihtelevat ajassa; `SNAGGED`-plaanarin arvot pysyvät vakioina. |
+| **8. Hoitamaton `LARGE`/`MONSTER` sotkee sisemmän** | Samalla laidalla uloin (`-3`) ja sisempi (`-2`) plaanari | Uloimpaan iskee hoitamaton `LARGE`/`MONSTER`-kala | `inward_drift_force` vetää uloimman plaanarin sisemmän etäisyysrajalle ja molemmat siirtyvät tilaan `"TANGLED"`. |
 
 ---
 

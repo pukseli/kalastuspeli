@@ -306,6 +306,11 @@ func _sync_rods_into(target_state: GameState, source_rods: Dictionary) -> void:
 				dst.planer.line_out = src_rod.planer.line_out
 				dst.planer.state = src_rod.planer.state
 				dst.planer.snag_world_position = src_rod.planer.snag_world_position
+				dst.planer.pull_back_offset = src_rod.planer.pull_back_offset
+				dst.planer.submersion = src_rod.planer.submersion
+				dst.planer.flag_angle = src_rod.planer.flag_angle
+				dst.planer.shake_intensity = src_rod.planer.shake_intensity
+				dst.planer.inward_drift_force = src_rod.planer.inward_drift_force
 		else:
 			target_state.rods[str(rid)] = src_rod.clone()
 
@@ -348,16 +353,31 @@ func _interpolate_rods_into(
 			dst.trail_factor = lerpf(ra.trail_factor, rb.trail_factor, t)
 			dst.planer.line_out = lerpf(ra.planer.line_out, rb.planer.line_out, t)
 			dst.planer.lateral_offset = lerpf(ra.planer.lateral_offset, rb.planer.lateral_offset, t)
+			dst.planer.pull_back_offset = lerpf(ra.planer.pull_back_offset, rb.planer.pull_back_offset, t)
+			dst.planer.submersion = lerpf(ra.planer.submersion, rb.planer.submersion, t)
+			dst.planer.flag_angle = lerpf(ra.planer.flag_angle, rb.planer.flag_angle, t)
+			dst.planer.shake_intensity = lerpf(ra.planer.shake_intensity, rb.planer.shake_intensity, t)
+			dst.planer.inward_drift_force = lerpf(ra.planer.inward_drift_force, rb.planer.inward_drift_force, t)
 		elif rb != null:
 			dst.trail_angle = rb.trail_angle
 			dst.trail_factor = rb.trail_factor
 			dst.planer.line_out = rb.planer.line_out
 			dst.planer.lateral_offset = rb.planer.lateral_offset
+			dst.planer.pull_back_offset = rb.planer.pull_back_offset
+			dst.planer.submersion = rb.planer.submersion
+			dst.planer.flag_angle = rb.planer.flag_angle
+			dst.planer.shake_intensity = rb.planer.shake_intensity
+			dst.planer.inward_drift_force = rb.planer.inward_drift_force
 		elif rdisc != null:
 			dst.trail_angle = rdisc.trail_angle
 			dst.trail_factor = rdisc.trail_factor
 			dst.planer.line_out = rdisc.planer.line_out
 			dst.planer.lateral_offset = rdisc.planer.lateral_offset
+			dst.planer.pull_back_offset = rdisc.planer.pull_back_offset
+			dst.planer.submersion = rdisc.planer.submersion
+			dst.planer.flag_angle = rdisc.planer.flag_angle
+			dst.planer.shake_intensity = rdisc.planer.shake_intensity
+			dst.planer.inward_drift_force = rdisc.planer.inward_drift_force
 
 		var disc_src := rdisc if rdisc != null else rb
 		if disc_src != null and disc_src.planer != null:
