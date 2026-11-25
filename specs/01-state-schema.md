@@ -40,6 +40,7 @@
 | `interact` | `bool` | `false` | Aseman varaus/vapautus (`E`-näppäin, lisätty S4) |
 | `interact_held` | `bool` | `false` | Jatkuva pidetty interaktio (`E` pohjassa plaanarin irrotukseen, lisätty S9b) |
 | `line_input` | `float` | `0.0` | Siiman säätösyöte (`+1.0` ulos `Q`/`Shift`, `-1.0` sisään `Space`, lisätty S8) |
+| `drag_input` | `float` | `0.0` | Kelan jarrun säätösyöte (`-1.0` `Z` löysää, `+1.0` `X` kiristä, lisätty S11a) |
 
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
@@ -125,8 +126,14 @@
 | `trail_angle` | `float` | `0.0` | Suoran siiman kulmahitaus veneen perälinjaan nähden (rad) |
 | `trail_factor` | `float` | `0.0` | Paikallaan olevan vieheen vaakaprojektiokerroin (`0.0 .. 1.0`) |
 | `planer` | `PlanerBoard` | `PlanerBoard.new()` | Vapaan kuuluva plaanari- ja `line_out`-tila |
+| `line_tension` | `float` | `0.0` | Siimaan kohdistuva todellinen vetojännitys (N, lisätty S11a) |
+| `line_max_strength` | `float` | `100.0` | Siiman nimellinen murtolujuus ehjänä (N, lisätty S11a) |
+| `drag_setting` | `float` | `60.0` | Kelan jarrun asetusarvo (`0.0 .. 125.0 N`, lisätty S11a) |
+| `line_remaining_on_spool` | `float` | `150.0` | Puolalla jäljellä oleva varasiima (m, lisätty S11a) |
+| `line_integrity` | `float` | `1.0` | Siiman kunto (`0.0 .. 1.0`, hankaumaraja `0.15`, lisätty S11a) |
+| `is_drag_slipping` | `bool` | `false` | Luistaako kelan jarru parhaillaan (lisätty S11a) |
 
-**Apumetodit:** `is_deployed() -> bool`, `get_line_out() -> float`, `clone() -> RodState`
+**Apumetodit:** `is_deployed() -> bool`, `get_line_out() -> float`, `get_effective_max_strength() -> float`, `reset_line_condition(spool_capacity: float = 150.0) -> void`, `copy_from(other: RodState) -> void`, `clone() -> RodState`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
 ### Viipaleet S9a–S9b (`09a-bite-and-reel`, `09b-planer-detach`)
@@ -160,8 +167,7 @@
 
 ## Suunniteltu tietoskeema (tulevat viipaleet S11+ — ks. [`specs/02-mechanics/line-physics.md`](02-mechanics/line-physics.md) ja [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
 
-> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState`, `GameState.rods`, `FishState`, `GameState.fishes`, `PlayerInput.interact_held`, `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` on toteutettu viipaleissa `S8–S10`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
-> - **`S11a` (`11a-line-physics-and-drag`):** `RodState` (`line_tension: float`, `line_max_strength: float`, `drag_setting: float`, `line_remaining_on_spool: float`, `line_integrity: float`, `is_drag_slipping: bool`) + `PlayerInput.drag_input: float` (`Z`/`X`) + puhdas `LinePhysics`-luokka (`src/core/simulation/line_physics.gd`). 3 katkeamisehtoa (ylikireä jarru `> 100 N`, tyhjä puola `0 m`, hankauma `line_integrity`) → `TANGLED` (`6 m` pätkä, `STOWED` palauttaa ehjäksi); löysä siima (`< 10 N`) antaa `+0.40 /s` karkauslisän aktiiviselle kalalle.
+> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState` (sis. jännityksen, jarrun, puolan, kunnon ja luiston `S11a`), `GameState.rods`, `FishState`, `GameState.fishes`, `PlayerInput.interact_held`, `PlayerInput.drag_input` (`S11a`), `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` (`10c`) on toteutettu viipaleissa `S8–S11a`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
 > - **`S11b` (`11b-line-visuals-and-rod-bend`):** Puhdas näkymäviipale (`src/view/`, ei tietoskeemadeltaa): 3D-siimakäyrä, vertex-värit/värinä, vavan taipuma ja visuaalinen kireys-/jarrumittari.
 > - **`S11c` (`11c-fish-fatigue`):** Kalan syvempi väsytysmalli (`stamina`-silmukka).
 > - **`S12` (`12-trolling-window-and-tangles`):** Uisteluikkunakalibrointi ja `TANGLED`-solmun selvitys kannella.

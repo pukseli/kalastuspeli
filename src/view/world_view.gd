@@ -464,7 +464,8 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 									active_rod.planer.line_out,
 								]
 						else:
-							var raikka_tag := " [RÄIKKÄ!]" if active_fish.is_drag_active() else ""
+							var is_slipping := active_fish.is_drag_active() or active_rod.is_drag_slipping
+							var raikka_tag := " [RÄIKKÄ!]" if is_slipping else ""
 							var sp_tag := " (%s)" % FishSimulator.get_species_display_name(active_fish.species) if active_fish.surfaced else " (Tuntematon kala)"
 							line_prompt = "[Space] Kelaa%s | %s%s: %.1f m" % [
 								raikka_tag,
@@ -477,6 +478,7 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 							bool(FishSimulator.get_strike_reaction_profile(active_fish.size_class).get("trips_planer", false))
 							or active_rod.planer.state == PlanerBoard.STATE_TRIPPED
 							or active_fish.is_drag_active()
+							or active_rod.is_drag_slipping
 						)
 						if big_or_tripped:
 							line_prompt = "[KALA KIINNI!] Poimi vapa [E] ja kelaa! | %s%s: %.1f m [%s]" % [
@@ -511,6 +513,18 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 						active_rod.planer.line_out,
 						active_rod.planer.state,
 					]
+				var eff_max := maxf(1.0, active_rod.get_effective_max_strength())
+				var tension_pct := roundi((active_rod.line_tension / eff_max) * 100.0)
+				line_prompt += " | Jarru [Z/X]: %d N | Kireys: %d%% | Puola: %d m" % [
+					roundi(active_rod.drag_setting),
+					tension_pct,
+					roundi(active_rod.line_remaining_on_spool),
+				]
+				var any_slip := (active_fish != null and active_fish.is_drag_active()) or active_rod.is_drag_slipping
+				if any_slip and not line_prompt.contains("[RÄIKKÄ!]"):
+					line_prompt += " [RÄIKKÄ!]"
+				elif active_fish != null and not active_fish.is_ready_to_land() and active_rod.line_tension < LinePhysics.SLACK_TENSION_THRESHOLD:
+					line_prompt += " [LÖYSÄ!]"
 
 	var fish_alert := _build_fish_alert_text(game_state)
 	var catch_hud := _build_catch_hud_text(game_state)
@@ -621,10 +635,10 @@ func _build_fish_alert_text(game_state: GameState) -> String:
 		if rod == null or item == null:
 			continue
 		var is_tripped := rod.planer.state == PlanerBoard.STATE_TRIPPED
-		var loud_fish := fish != null and (bool(FishSimulator.get_strike_reaction_profile(fish.size_class).get("trips_planer", false)) or fish.is_drag_active())
+		var loud_fish := fish != null and (bool(FishSimulator.get_strike_reaction_profile(fish.size_class).get("trips_planer", false)) or fish.is_drag_active() or rod.is_drag_slipping)
 		if is_tripped or loud_fish:
 			tripped_labels.append(_format_held_item_label(item))
-		if fish != null and fish.is_drag_active():
+		if (fish != null and fish.is_drag_active()) or rod.is_drag_slipping:
 			any_drag = true
 	if tripped_labels.is_empty():
 		return ""
@@ -660,6 +674,10 @@ func _step_raikka_audio(game_state: GameState, delta: float = 1.0 / 60.0) -> voi
 		var fish: FishState = game_state.fishes[fid]
 		if fish != null and fish.drag_rate > max_drag:
 			max_drag = fish.drag_rate
+	for rid in game_state.rods:
+		var rod: RodState = game_state.rods[rid]
+		if rod != null and rod.is_drag_slipping:
+			max_drag = maxf(max_drag, 0.7)
 	if max_drag <= 0.01:
 		_raikka_cooldown = 0.0
 		return

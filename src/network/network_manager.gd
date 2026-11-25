@@ -318,6 +318,7 @@ func receive_client_input(peer_id: int, input_dict: Dictionary) -> void:
 		"interact": prev_interact or bool(input_dict.get("interact", false)),
 		"interact_held": bool(input_dict.get("interact_held", false)),
 		"line_input": clampf(float(input_dict.get("line_input", 0.0)), -1.0, 1.0),
+		"drag_input": clampf(float(input_dict.get("drag_input", 0.0)), -1.0, 1.0),
 	}
 
 
@@ -496,6 +497,7 @@ func rpc_submit_client_interact() -> void:
 			"interact": true,
 			"interact_held": false,
 			"line_input": 0.0,
+			"drag_input": 0.0,
 		}
 	else:
 		_client_inputs[sender_id]["interact"] = true
@@ -524,6 +526,7 @@ func _on_peer_connected(peer_id: int) -> void:
 			"interact": false,
 			"interact_held": false,
 			"line_input": 0.0,
+			"drag_input": 0.0,
 		}
 	_log_net("[NET] Peer connected: %d" % peer_id)
 

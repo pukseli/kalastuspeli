@@ -62,6 +62,41 @@ func _get_line_input(raw_input: Variant) -> float:
 	return 0.0
 
 
+func _get_drag_input(raw_input: Variant) -> float:
+	if raw_input is PlayerInput:
+		return clampf((raw_input as PlayerInput).drag_input, -1.0, 1.0)
+	if raw_input is Dictionary:
+		return clampf(float((raw_input as Dictionary).get("drag_input", 0.0)), -1.0, 1.0)
+	return 0.0
+
+
+func _find_target_rod_item_for_player(state: GameState, player: PlayerState) -> HeldItem:
+	var held := state.get_player_held_item(player.peer_id)
+	if held != null:
+		return held if held.item_type == ItemConfig.ITEM_TYPE_ROD else null
+	var active_cfg: ItemConfig = state.item_config
+	if active_cfg == null:
+		return null
+	var best_item: HeldItem = null
+	var best_dist := INF
+	for holder in active_cfg.holders:
+		var hid := str(holder.get("id", ""))
+		if hid.is_empty():
+			continue
+		var existing := state.get_holder_item(hid)
+		if existing == null or existing.item_type != ItemConfig.ITEM_TYPE_ROD:
+			continue
+		var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
+		var radius := float(holder.get("radius", ItemConfig.DEFAULT_HOLDER_RADIUS))
+		var dx := player.local_position.x - pos.x
+		var dz := player.local_position.z - pos.z
+		var dist := sqrt(dx * dx + dz * dz)
+		if dist <= radius and dist < best_dist:
+			best_dist = dist
+			best_item = existing
+	return best_item
+
+
 func _get_rod_holder_cfg(state: GameState, item: HeldItem) -> Dictionary:
 	if state == null or state.item_config == null or item == null:
 		return {}
@@ -75,6 +110,7 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA, obst
 	if state == null:
 		return
 	state.sync_rods_with_items()
+	_process_drag_inputs(state, inputs, delta)
 	var reeling_rods := _process_line_inputs(state, inputs, delta)
 
 	var prev_board_pos: Dictionary = {}
@@ -104,20 +140,56 @@ func step(state: GameState, inputs: Dictionary, delta: float = FIXED_DELTA, obst
 	if not obstacles.is_empty():
 		_check_obstacles(state, rod_ids, obstacles)
 
+	for rid in rod_ids:
+		if state.has_fish_on_rod(rid):
+			continue
+		var item := state.items.get(rid, null) as HeldItem
+		var rod := state.get_rod_state(rid)
+		if item == null or rod == null:
+			continue
+		LinePhysics.step_rod_line(state, item, rod, self, delta, 0.0, reeling_rods.has(rid), false)
 
-func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) -> Dictionary:
-	var active_cfg: ItemConfig = state.item_config
+
+func _sorted_input_pids(inputs: Dictionary) -> Array[int]:
 	var pids: Array[int] = []
 	for pid_raw in inputs.keys():
 		var pid := int(pid_raw)
 		if pid != 0 and not pids.has(pid):
 			pids.append(pid)
 	pids.sort()
+	return pids
 
+
+func _process_drag_inputs(state: GameState, inputs: Dictionary, delta: float) -> void:
+	var touched_rods: Dictionary = {}
+	for pid in _sorted_input_pids(inputs):
+		if not state.players.has(pid):
+			continue
+		var player: PlayerState = state.players[pid]
+		if player.is_bot or state.is_player_at_station(pid):
+			continue
+		var drag_in := _get_drag_input(_get_player_input(inputs, pid))
+		if absf(drag_in) < 0.001:
+			continue
+		var target_item := _find_target_rod_item_for_player(state, player)
+		if target_item == null or touched_rods.has(target_item.id):
+			continue
+		var rod := state.get_rod_state(target_item.id)
+		if rod == null:
+			continue
+		touched_rods[target_item.id] = true
+		rod.drag_setting = clampf(
+			rod.drag_setting + drag_in * LinePhysics.DRAG_ADJUST_RATE * delta,
+			RodState.MIN_DRAG_SETTING,
+			RodState.MAX_DRAG_SETTING
+		)
+
+
+func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) -> Dictionary:
 	var touched_rods: Dictionary = {}
 	var reeling_rods: Dictionary = {}
 
-	for pid in pids:
+	for pid in _sorted_input_pids(inputs):
 		if not state.players.has(pid):
 			continue
 		var player: PlayerState = state.players[pid]
@@ -128,29 +200,7 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 		if absf(line_in) < 0.001:
 			continue
 
-		var target_item: HeldItem = null
-		var held := state.get_player_held_item(pid)
-		if held != null:
-			if held.item_type == ItemConfig.ITEM_TYPE_ROD:
-				target_item = held
-		elif active_cfg != null:
-			var best_dist := INF
-			for holder in active_cfg.holders:
-				var hid := str(holder.get("id", ""))
-				if hid.is_empty():
-					continue
-				var existing := state.get_holder_item(hid)
-				if existing == null or existing.item_type != ItemConfig.ITEM_TYPE_ROD:
-					continue
-				var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
-				var radius := float(holder.get("radius", ItemConfig.DEFAULT_HOLDER_RADIUS))
-				var dx := player.local_position.x - pos.x
-				var dz := player.local_position.z - pos.z
-				var dist := sqrt(dx * dx + dz * dz)
-				if dist <= radius and dist < best_dist:
-					best_dist = dist
-					target_item = existing
-
+		var target_item := _find_target_rod_item_for_player(state, player)
 		if target_item == null or touched_rods.has(target_item.id):
 			continue
 		if state.has_fish_on_rod(target_item.id):
@@ -165,8 +215,20 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 				continue
 
 		var prev_line := rod.planer.line_out
-		var next_line := clampf(prev_line + line_in * config.line_adjust_speed * delta, 0.0, config.max_line_out)
+		var next_line := prev_line
+		if line_in > 0.0:
+			if prev_line < config.max_line_out:
+				var max_out := minf(config.max_line_out, prev_line + rod.line_remaining_on_spool)
+				next_line = minf(max_out, prev_line + line_in * config.line_adjust_speed * delta)
+		else:
+			next_line = maxf(0.0, prev_line + line_in * config.line_adjust_speed * delta)
+
 		rod.planer.line_out = next_line
+		rod.line_remaining_on_spool = clampf(
+			rod.line_remaining_on_spool - (next_line - prev_line),
+			0.0,
+			RodState.DEFAULT_SPOOL_CAPACITY
+		)
 		if next_line > 0.001 and next_line < prev_line and prev_line > 0.001:
 			rod.planer.lateral_offset *= (next_line / prev_line)
 			reeling_rods[target_item.id] = true
@@ -178,6 +240,7 @@ func _process_line_inputs(state: GameState, inputs: Dictionary, delta: float) ->
 			rod.planer.snag_world_position = Vector2.ZERO
 			rod.trail_factor = 0.0
 			rod.trail_angle = 0.0
+			rod.reset_line_condition()
 		elif prev_line <= 0.001:
 			rod.trail_factor = maxf(rod.trail_factor, config.min_stopped_trail_factor)
 			if rod.planer.state == PlanerBoard.STATE_STOWED:
@@ -200,6 +263,7 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 		rod.planer.reset_strike_reaction()
 		rod.trail_factor = 0.0
 		rod.trail_angle = 0.0
+		rod.reset_line_condition()
 		if not holder_cfg.is_empty():
 			rod.planer.attached = bool(holder_cfg.get("default_planer_attached", false))
 		return

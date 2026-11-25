@@ -220,6 +220,9 @@ func _read_local_input() -> void:
 	)
 	var reel_in := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_key_pressed(KEY_SPACE)
 	player_input.line_input = (1.0 if let_out else 0.0) - (1.0 if reel_in else 0.0)
+	var drag_loosen := Input.is_physical_key_pressed(KEY_Z) or Input.is_key_pressed(KEY_Z)
+	var drag_tighten := Input.is_physical_key_pressed(KEY_X) or Input.is_key_pressed(KEY_X)
+	player_input.drag_input = (1.0 if drag_tighten else 0.0) - (1.0 if drag_loosen else 0.0)
 	player_input.interact_held = Input.is_physical_key_pressed(KEY_E) or Input.is_key_pressed(KEY_E)
 
 	world_view.camera_controller.apply_axes(

@@ -648,40 +648,65 @@ func _step_hooked_fish(
 		if fish.jump_progress >= 1.0:
 			fish.jump_progress = 0.0
 
+	# Update strike reaction and line physics (shared tension, drag slip, abrasion, snap)
+	_update_planer_strike_reaction(rod, fish, delta)
+
+	var stamina_factor := 0.35 + 0.65 * fish.stamina
+	var raw_pull := lerpf(float(spec["base_pull"]), float(spec["surge_pull"]), 1.0 if fish.surge_timer > 0.0 else 0.0) * stamina_factor
+	var fish_pull_n := raw_pull * LinePhysics.FISH_PULL_TO_NEWTONS
+	var phys := LinePhysics.step_rod_line(
+		state,
+		item,
+		rod,
+		rod_sim,
+		delta,
+		fish_pull_n,
+		is_reeling,
+		is_detaching,
+		config.max_drag_slip_speed
+	)
+	if bool(phys["snapped"]):
+		return
+	fish.drag_rate = float(phys["slip_speed"])
+
 	# Shake-off roll: never during grace period, never when exhausted (stamina <= 0.05)
-	if fish.hooked_time >= config.grace_period_sec and fish.stamina > 0.05 and fish.surge_timer > 0.0:
-		var hazard := config.shakeoff_chance_per_sec
-		if fish.unattended_time >= config.unattended_risk_delay_sec:
-			hazard += config.shakeoff_unattended_bonus
+	var is_slack := rod.line_tension < LinePhysics.SLACK_TENSION_THRESHOLD and not is_detaching
+	if fish.hooked_time >= config.grace_period_sec and fish.stamina > 0.05 and (fish.surge_timer > 0.0 or is_slack):
+		var hazard := 0.0
+		if fish.surge_timer > 0.0:
+			hazard += config.shakeoff_chance_per_sec
+			if fish.unattended_time >= config.unattended_risk_delay_sec:
+				hazard += config.shakeoff_unattended_bonus
+		if is_slack:
+			hazard += LinePhysics.SLACK_ESCAPE_HAZARD
 		var escape_prob := 1.0 - exp(-hazard * delta)
 		if _rng.randf() < escape_prob:
 			var label := "Kala" if not fish.surfaced else get_species_display_name(fish.species)
-			state.set_fish_notice("%s irtosi koukusta kesken väsytyksen!" % label, 4.0)
+			if is_slack and fish.surge_timer <= 0.0:
+				state.set_fish_notice("%s irtosi löysästä siimasta!" % label, 4.0)
+			else:
+				state.set_fish_notice("%s irtosi koukusta kesken väsytyksen!" % label, 4.0)
 			state.fishes.erase(fish.rod_id)
 			rod.planer.reset_strike_reaction()
+			rod.is_drag_slipping = false
 			if rod.planer.attached and rod.planer.state == PlanerBoard.STATE_TRIPPED:
 				rod.planer.state = PlanerBoard.STATE_TROLLING if state.boat.forward_speed >= rod_sim.config.min_pull_speed else PlanerBoard.STATE_DEPLOYING
 			return
 
-	_update_planer_strike_reaction(rod, fish, delta)
-
-	# Drag / räikkä calculation
-	var stamina_factor := 0.35 + 0.65 * fish.stamina
-	var raw_pull := lerpf(float(spec["base_pull"]), float(spec["surge_pull"]), 1.0 if fish.surge_timer > 0.0 else 0.0) * stamina_factor
-	fish.drag_rate = clampf((raw_pull - config.drag_resistance) * config.drag_slip_scale, 0.0, config.max_drag_slip_speed)
-
-	# Line adjustment: reeling in hand (stops at detach lock when planer attached) vs drag slip
+	# Realistic reel clutch: reeling is blocked while fish+water exceeds drag_setting
 	var prev_line := rod.planer.line_out
-	if is_reeling:
-		var reel_speed := maxf(0.35, float(spec["reel_speed"]) - fish.drag_rate * 0.65)
+	if is_reeling and not rod.is_drag_slipping:
+		var f_ext := float(phys["external_load"])
+		var drag_margin := clampf((rod.drag_setting - f_ext) / maxf(1.0, rod.drag_setting), 0.0, 1.0)
+		var reel_speed := float(spec["reel_speed"]) * lerpf(0.60, 1.0, drag_margin)
 		var next_line := maxf(0.0, prev_line - reel_speed * delta)
 		if rod.planer.attached and next_line < config.detach_distance:
 			next_line = minf(prev_line, config.detach_distance)
+		var reeled := maxf(0.0, prev_line - next_line)
 		rod.planer.line_out = next_line
+		rod.line_remaining_on_spool = minf(RodState.DEFAULT_SPOOL_CAPACITY, rod.line_remaining_on_spool + reeled)
 		if prev_line > 0.001 and next_line > 0.001:
 			rod.planer.lateral_offset *= (next_line / prev_line)
-	elif fish.drag_rate > 0.001 and not is_detaching:
-		rod.planer.line_out = minf(rod_sim.config.max_line_out, prev_line + fish.drag_rate * delta)
 
 	# S9b manual planer detach lock (hold E in holder or by empty-handed co-op teammate)
 	ready_for_detach = is_rod_ready_for_planer_detach(rod, fish, config.detach_window_distance)
@@ -740,6 +765,8 @@ func _step_ready_to_land(
 	fish.surge_timer = 0.0
 	fish.jump_progress = 0.0
 	fish.detach_progress = 0.0
+	rod.is_drag_slipping = false
+	rod.line_tension = LinePhysics.compute_water_drag(state.boat.forward_speed, rod)
 	var thrash_speed := lerpf(2.2, 11.0, clampf(fish.stamina, 0.0, 1.0))
 	fish.fight_phase = wrapf(fish.fight_phase + delta * thrash_speed, 0.0, TAU)
 	rod.planer.line_out = config.ready_to_land_distance
@@ -808,6 +835,7 @@ func _clear_fish_and_reset_rod(state: GameState, item: HeldItem, rod: RodState, 
 	rod.planer.reset_strike_reaction()
 	rod.trail_factor = 0.0
 	rod.trail_angle = 0.0
+	rod.reset_line_condition()
 	if state.item_config != null and item != null:
 		var hid := item.holder_id if not item.holder_id.is_empty() else item.last_holder_id
 		if not hid.is_empty():

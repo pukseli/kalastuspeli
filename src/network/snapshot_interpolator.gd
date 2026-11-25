@@ -322,13 +322,7 @@ func _sync_rods_into(target_state: GameState, source_rods: Dictionary) -> void:
 			continue
 		if target_state.rods.has(rid) and target_state.rods[rid] is RodState:
 			var dst: RodState = target_state.rods[rid]
-			dst.rod_id = src_rod.rod_id
-			dst.trail_angle = src_rod.trail_angle
-			dst.trail_factor = src_rod.trail_factor
-			if dst.planer == null:
-				dst.planer = PlanerBoard.new()
-			if src_rod.planer != null:
-				dst.planer.copy_from(src_rod.planer)
+			dst.copy_from(src_rod)
 		else:
 			target_state.rods[str(rid)] = src_rod.clone()
 
@@ -369,6 +363,10 @@ func _interpolate_rods_into(
 		if rb != null and ra != null:
 			dst.trail_angle = wrapf(lerp_angle(ra.trail_angle, rb.trail_angle, t), -PI, PI)
 			dst.trail_factor = lerpf(ra.trail_factor, rb.trail_factor, t)
+			dst.line_tension = lerpf(ra.line_tension, rb.line_tension, t)
+			dst.drag_setting = lerpf(ra.drag_setting, rb.drag_setting, t)
+			dst.line_remaining_on_spool = lerpf(ra.line_remaining_on_spool, rb.line_remaining_on_spool, t)
+			dst.line_integrity = lerpf(ra.line_integrity, rb.line_integrity, t)
 			dst.planer.line_out = lerpf(ra.planer.line_out, rb.planer.line_out, t)
 			dst.planer.lateral_offset = lerpf(ra.planer.lateral_offset, rb.planer.lateral_offset, t)
 			dst.planer.pull_back_offset = lerpf(ra.planer.pull_back_offset, rb.planer.pull_back_offset, t)
@@ -379,6 +377,10 @@ func _interpolate_rods_into(
 		elif rb != null:
 			dst.trail_angle = rb.trail_angle
 			dst.trail_factor = rb.trail_factor
+			dst.line_tension = rb.line_tension
+			dst.drag_setting = rb.drag_setting
+			dst.line_remaining_on_spool = rb.line_remaining_on_spool
+			dst.line_integrity = rb.line_integrity
 			dst.planer.line_out = rb.planer.line_out
 			dst.planer.lateral_offset = rb.planer.lateral_offset
 			dst.planer.pull_back_offset = rb.planer.pull_back_offset
@@ -389,6 +391,10 @@ func _interpolate_rods_into(
 		elif rdisc != null:
 			dst.trail_angle = rdisc.trail_angle
 			dst.trail_factor = rdisc.trail_factor
+			dst.line_tension = rdisc.line_tension
+			dst.drag_setting = rdisc.drag_setting
+			dst.line_remaining_on_spool = rdisc.line_remaining_on_spool
+			dst.line_integrity = rdisc.line_integrity
 			dst.planer.line_out = rdisc.planer.line_out
 			dst.planer.lateral_offset = rdisc.planer.lateral_offset
 			dst.planer.pull_back_offset = rdisc.planer.pull_back_offset
@@ -398,11 +404,14 @@ func _interpolate_rods_into(
 			dst.planer.inward_drift_force = rdisc.planer.inward_drift_force
 
 		var disc_src := rdisc if rdisc != null else rb
-		if disc_src != null and disc_src.planer != null:
-			dst.planer.side = disc_src.planer.side
-			dst.planer.attached = disc_src.planer.attached
-			dst.planer.state = disc_src.planer.state
-			dst.planer.snag_world_position = disc_src.planer.snag_world_position
+		if disc_src != null:
+			dst.line_max_strength = disc_src.line_max_strength
+			dst.is_drag_slipping = disc_src.is_drag_slipping
+			if disc_src.planer != null:
+				dst.planer.side = disc_src.planer.side
+				dst.planer.attached = disc_src.planer.attached
+				dst.planer.state = disc_src.planer.state
+				dst.planer.snag_world_position = disc_src.planer.snag_world_position
 
 
 func _clone_fishes_dict(source_fishes: Dictionary) -> Dictionary:

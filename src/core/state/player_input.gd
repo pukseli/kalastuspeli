@@ -8,6 +8,7 @@ var move_z: float = 0.0
 var interact: bool = false
 var interact_held: bool = false
 var line_input: float = 0.0
+var drag_input: float = 0.0
 
 
 func to_dict() -> Dictionary:
@@ -19,6 +20,7 @@ func to_dict() -> Dictionary:
 		"interact": interact,
 		"interact_held": interact_held,
 		"line_input": line_input,
+		"drag_input": drag_input,
 	}
 
 
@@ -30,3 +32,4 @@ func from_dict(data: Dictionary) -> void:
 	interact = bool(data.get("interact", false))
 	interact_held = bool(data.get("interact_held", false))
 	line_input = clampf(float(data.get("line_input", 0.0)), -1.0, 1.0)
+	drag_input = clampf(float(data.get("drag_input", 0.0)), -1.0, 1.0)
