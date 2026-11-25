@@ -1,6 +1,9 @@
 class_name BoatView
 extends Node3D
 
+const RESTING_TIP_PIVOT_Y: float = 1.12
+const RESTING_TIP_FROM_PIVOT := Vector3(0.0, 0.57, 0.0)
+
 var players_container: Node3D
 var holders_container: Node3D
 var holder_rods_container: Node3D
@@ -8,6 +11,8 @@ var deck_items_container: Node3D
 var _player_views: Dictionary = {}
 var _holder_meta: Dictionary = {}
 var _holder_rod_views: Dictionary = {}
+var _holder_rod_parts: Dictionary = {}
+var _holder_rod_bend_deg: Dictionary = {}
 var _deck_item_views: Dictionary = {}
 var _configured_layout_sig: String = ""
 var _configured_cfg: ItemConfig = null
@@ -100,7 +105,7 @@ func _init_holder_resources() -> void:
 	_rod_shaft_mesh = CylinderMesh.new()
 	_rod_shaft_mesh.top_radius = 0.015
 	_rod_shaft_mesh.bottom_radius = 0.025
-	_rod_shaft_mesh.height = 1.6
+	_rod_shaft_mesh.height = 1.15
 	_rod_shaft_mesh.radial_segments = 6
 	_rod_shaft_mesh.rings = 1
 	_rod_shaft_mesh.material = shaft_mat
@@ -109,9 +114,9 @@ func _init_holder_resources() -> void:
 		var tip_mat := StandardMaterial3D.new()
 		tip_mat.albedo_color = accent_color
 		var tip_mesh := CylinderMesh.new()
-		tip_mesh.top_radius = 0.018
-		tip_mesh.bottom_radius = 0.022
-		tip_mesh.height = 0.28
+		tip_mesh.top_radius = 0.013
+		tip_mesh.bottom_radius = 0.019
+		tip_mesh.height = 0.58
 		tip_mesh.radial_segments = 6
 		tip_mesh.rings = 1
 		tip_mesh.material = tip_mat
@@ -164,6 +169,8 @@ func configure_holders(item_config: ItemConfig) -> void:
 	layout_rebuild_count += 1
 	_holder_meta.clear()
 	_holder_rod_views.clear()
+	_holder_rod_parts.clear()
+	_holder_rod_bend_deg.clear()
 	_free_children_safe(holder_rods_container)
 	_free_children_safe(holders_container)
 
@@ -196,12 +203,16 @@ func get_visual_rod_tip_world(item: HeldItem, fallback_state: GameState = null) 
 		elif not item.is_carried() and _holder_rod_views.has(item.id):
 			var rod_node := _holder_rod_views[item.id] as Node3D
 			if rod_node != null:
+				var parts := _holder_rod_parts.get(item.id, {}) as Dictionary
+				var tip_pivot := parts.get("tip_pivot", null) as Node3D
+				if tip_pivot != null:
+					return transform * (rod_node.transform * (tip_pivot.transform * RESTING_TIP_FROM_PIVOT))
 				return transform * (rod_node.transform * RodSimulator.RESTING_TIP_LOCAL_OFFSET)
 	var helper := RodSimulator.new()
 	return helper.get_rod_tip_world(fallback_state, item)
 
 
-func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dictionary = {}) -> void:
+func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dictionary = {}, rods: Dictionary = {}) -> void:
 	if item_config != null:
 		configure_holders(item_config)
 
@@ -220,6 +231,8 @@ func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dict
 		if not active_resting.has(existing_iid):
 			var stale_rod: Node3D = _holder_rod_views[existing_iid]
 			_holder_rod_views.erase(existing_iid)
+			_holder_rod_parts.erase(existing_iid)
+			_holder_rod_bend_deg.erase(existing_iid)
 			_free_node_safe(stale_rod)
 
 	for iid in active_resting:
@@ -229,29 +242,47 @@ func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dict
 		if _holder_rod_views.has(iid):
 			rod_node = _holder_rod_views[iid] as Node3D
 		else:
-			rod_node = _create_resting_rod_node(iid)
+			rod_node = _create_resting_rod_node(iid, true)
 			holder_rods_container.add_child(rod_node)
 			_holder_rod_views[iid] = rod_node
 
 		rod_node.position = meta["local_position"]
 		var base_rot: Vector3 = meta["rotation_degrees"]
+		var parts := _holder_rod_parts.get(iid, {}) as Dictionary
+		var tip_pivot := parts.get("tip_pivot", null) as Node3D
 		var fish := fishes.get(iid, null) as FishState
+		var rod := rods.get(iid, null) as RodState
+		var tension_ratio := 0.0
+		if rod != null and rod.is_deployed():
+			tension_ratio = clampf(rod.line_tension / maxf(1.0, rod.get_effective_max_strength()), 0.0, 1.0)
+		var bend_deg := tension_ratio * 32.0
+		var osc_deg := 0.0
 		if fish != null:
-			var side_sign := -float(int(meta.get("side", 1)))
 			var big := bool(FishSimulator.get_strike_reaction_profile(fish.size_class).get("trips_planer", false))
-			var bend_amp := 16.0 if big else 6.0
-			var osc := sin(fish.fight_phase * (2.2 if big else 3.0))
-			var drag_kick := 6.0 if fish.is_drag_active() else 0.0
-			rod_node.rotation_degrees = base_rot + Vector3(
-				(bend_amp * 0.55 + drag_kick) + osc * (bend_amp * 0.45),
-				0.0,
-				side_sign * (bend_amp * 0.4 + osc * bend_amp * 0.35)
-			)
+			if tension_ratio < 0.02:
+				var fallback_min := (16.0 if big else 6.0) + (6.0 if fish.is_drag_active() else 0.0)
+				bend_deg = maxf(bend_deg, fallback_min)
+			osc_deg = sin(fish.fight_phase * (2.2 if big else 3.0)) * ((7.0 if big else 3.0) * lerpf(0.6, 1.25, tension_ratio))
+		elif rod != null and rod.is_drag_slipping:
+			bend_deg += 4.0
+
+		var total_bend := clampf(bend_deg + osc_deg, 0.0, 46.0)
+		_holder_rod_bend_deg[iid] = total_bend
+		if total_bend > 0.001:
+			var side_sign := -float(int(meta.get("side", 1)))
+			rod_node.rotation_degrees = base_rot + Vector3(total_bend * 0.42, 0.0, side_sign * total_bend * 0.24)
+			if tip_pivot != null:
+				tip_pivot.rotation_degrees = Vector3(total_bend * 0.88, 0.0, side_sign * total_bend * 0.34)
 		else:
 			rod_node.rotation_degrees = base_rot
-		var tip := rod_node.get_node_or_null("Tip") as MeshInstance3D
+			if tip_pivot != null:
+				tip_pivot.rotation_degrees = Vector3.ZERO
+
+		var tip := parts.get("tip", null) as MeshInstance3D
 		if tip != null and not _rod_tip_meshes.is_empty():
-			tip.mesh = _rod_tip_meshes[posmod(item.color_index, _rod_tip_meshes.size())]
+			var target_tip_mesh := _rod_tip_meshes[posmod(item.color_index, _rod_tip_meshes.size())]
+			if tip.mesh != target_tip_mesh:
+				tip.mesh = target_tip_mesh
 
 	for existing_did in _deck_item_views.keys():
 		if not active_deck.has(existing_did):
@@ -302,21 +333,33 @@ func _create_deck_item_node(item_id: String, item_type: String) -> Node3D:
 	return root
 
 
-func _create_resting_rod_node(item_id: String) -> Node3D:
+func get_resting_rod_bend_degrees(rod_id: String) -> float:
+	return float(_holder_rod_bend_deg.get(rod_id, 0.0))
+
+
+func _create_resting_rod_node(item_id: String, register_parts: bool = false) -> Node3D:
 	var root := Node3D.new()
 	root.name = "RestingRod_%s" % item_id
 
 	var shaft := MeshInstance3D.new()
 	shaft.name = "Shaft"
 	shaft.mesh = _rod_shaft_mesh
-	shaft.position = Vector3(0.0, 0.80, 0.0)
+	shaft.position = Vector3(0.0, 0.575, 0.0)
 	root.add_child(shaft)
+
+	var tip_pivot := Node3D.new()
+	tip_pivot.name = "TipPivot"
+	tip_pivot.position = Vector3(0.0, RESTING_TIP_PIVOT_Y, 0.0)
+	root.add_child(tip_pivot)
 
 	var tip := MeshInstance3D.new()
 	tip.name = "Tip"
 	tip.mesh = _rod_tip_meshes[0] if not _rod_tip_meshes.is_empty() else null
-	tip.position = Vector3(0.0, 1.55, 0.0)
-	root.add_child(tip)
+	tip.position = Vector3(0.0, 0.28, 0.0)
+	tip_pivot.add_child(tip)
+
+	if register_parts:
+		_holder_rod_parts[item_id] = {"tip_pivot": tip_pivot, "tip": tip}
 	return root
 
 
@@ -347,7 +390,7 @@ func _free_children_safe(parent: Node) -> void:
 		_free_node_safe(child)
 
 
-func apply_players(players: Dictionary, items: Dictionary = {}, fishes: Dictionary = {}) -> void:
+func apply_players(players: Dictionary, items: Dictionary = {}, fishes: Dictionary = {}, rods: Dictionary = {}) -> void:
 	for pid in _player_views.keys():
 		if not players.has(pid):
 			var stale_view: PlayerView = _player_views[pid]
@@ -373,7 +416,8 @@ func apply_players(players: Dictionary, items: Dictionary = {}, fishes: Dictiona
 		view.apply_state(player_state)
 		var carried := carried_by_peer.get(int(pid), null) as HeldItem
 		var carried_fish := fishes.get(carried.id, null) as FishState if carried != null else null
-		view.apply_held_item(carried, carried_fish)
+		var carried_rod := rods.get(carried.id, null) as RodState if carried != null else null
+		view.apply_held_item(carried, carried_fish, carried_rod)
 
 
 func get_player_view(peer_id: int) -> PlayerView:

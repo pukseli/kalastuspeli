@@ -18,6 +18,8 @@ const ROD_ACCENT_PALETTE: Array[Color] = [
 ]
 
 const HELD_BASE_ROT_DEG := Vector3(-42.0, 0.0, -10.0)
+const HELD_TIP_PIVOT_Y: float = 0.78
+const HELD_TIP_FROM_PIVOT := Vector3(0.0, 0.445, 0.0)
 
 var _mesh_instance: MeshInstance3D
 var _material: StandardMaterial3D
@@ -26,6 +28,8 @@ var _held_item_anchor: Node3D
 var _rod_visual: Node3D
 var _net_visual: Node3D
 var _held_tip_mat: StandardMaterial3D
+var _held_tip_pivot: Node3D
+var _held_rod_bend_deg: float = 0.0
 
 
 static func create_landing_net_visual() -> Node3D:
@@ -113,28 +117,33 @@ func _init() -> void:
 	var shaft_mesh := CylinderMesh.new()
 	shaft_mesh.top_radius = 0.015
 	shaft_mesh.bottom_radius = 0.025
-	shaft_mesh.height = 1.35
+	shaft_mesh.height = 0.92
 	shaft_mesh.radial_segments = 6
 	shaft_mesh.rings = 1
 	shaft_mesh.material = shaft_mat
 	var shaft_node := MeshInstance3D.new()
 	shaft_node.mesh = shaft_mesh
-	shaft_node.position = Vector3(0.0, 0.55, 0.0)
+	shaft_node.position = Vector3(0.0, 0.34, 0.0)
 	_rod_visual.add_child(shaft_node)
+
+	_held_tip_pivot = Node3D.new()
+	_held_tip_pivot.name = "TipPivot"
+	_held_tip_pivot.position = Vector3(0.0, HELD_TIP_PIVOT_Y, 0.0)
+	_rod_visual.add_child(_held_tip_pivot)
 
 	_held_tip_mat = StandardMaterial3D.new()
 	_held_tip_mat.albedo_color = ROD_ACCENT_PALETTE[0]
 	var tip_mesh := CylinderMesh.new()
-	tip_mesh.top_radius = 0.018
-	tip_mesh.bottom_radius = 0.022
-	tip_mesh.height = 0.24
+	tip_mesh.top_radius = 0.013
+	tip_mesh.bottom_radius = 0.019
+	tip_mesh.height = 0.46
 	tip_mesh.radial_segments = 6
 	tip_mesh.rings = 1
 	tip_mesh.material = _held_tip_mat
 	var tip_node := MeshInstance3D.new()
 	tip_node.mesh = tip_mesh
-	tip_node.position = Vector3(0.0, 1.15, 0.0)
-	_rod_visual.add_child(tip_node)
+	tip_node.position = Vector3(0.0, 0.215, 0.0)
+	_held_tip_pivot.add_child(tip_node)
 
 	_net_visual = create_landing_net_visual()
 	_net_visual.visible = false
@@ -156,41 +165,63 @@ func apply_state(player: PlayerState) -> void:
 	set_color_index(player.color_index)
 
 
-func apply_held_item(item: HeldItem, fish: FishState = null) -> void:
+func apply_held_item(item: HeldItem, fish: FishState = null, rod: RodState = null) -> void:
 	if item == null:
 		_held_item_anchor.visible = false
 		_rod_visual.visible = false
 		_net_visual.visible = false
 		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG
+		if _held_tip_pivot != null:
+			_held_tip_pivot.rotation_degrees = Vector3.ZERO
+		_held_rod_bend_deg = 0.0
 		return
 	_held_item_anchor.visible = true
 	if item.item_type == ItemConfig.ITEM_TYPE_NET:
 		_rod_visual.visible = false
 		_net_visual.visible = true
 		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG
+		if _held_tip_pivot != null:
+			_held_tip_pivot.rotation_degrees = Vector3.ZERO
+		_held_rod_bend_deg = 0.0
 		return
 	_rod_visual.visible = true
 	_net_visual.visible = false
 	var idx := posmod(item.color_index, ROD_ACCENT_PALETTE.size())
 	_held_tip_mat.albedo_color = ROD_ACCENT_PALETTE[idx]
+	var tension_ratio := 0.0
+	if rod != null and rod.is_deployed():
+		tension_ratio = clampf(rod.line_tension / maxf(1.0, rod.get_effective_max_strength()), 0.0, 1.0)
+	var bend_deg := tension_ratio * 34.0
+	var osc_x := 0.0
+	var osc_y := 0.0
 	if fish != null:
 		var big := bool(FishSimulator.get_strike_reaction_profile(fish.size_class).get("trips_planer", false))
+		if tension_ratio < 0.02:
+			var fallback_min := (14.0 if big else 5.0) + (6.0 if fish.is_drag_active() else 0.0)
+			bend_deg = maxf(bend_deg, fallback_min)
 		var osc := sin(fish.fight_phase * (2.2 if big else 3.0))
-		var pull := (14.0 if big else 5.0) + (6.0 if fish.is_drag_active() else 0.0)
-		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG + Vector3(
-			-pull * 0.5 + osc * (4.5 if big else 2.2),
-			osc * (3.5 if big else 1.5),
-			0.0
-		)
-	else:
-		_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG
+		osc_x = osc * (4.5 if big else 2.2)
+		osc_y = osc * (3.5 if big else 1.5)
+	elif rod != null and rod.is_drag_slipping:
+		bend_deg += 4.0
+	var total_bend := clampf(bend_deg, 0.0, 46.0)
+	_held_rod_bend_deg = total_bend
+	_held_item_anchor.rotation_degrees = HELD_BASE_ROT_DEG + Vector3(-total_bend * 0.42 + osc_x, osc_y, 0.0)
+	if _held_tip_pivot != null:
+		_held_tip_pivot.rotation_degrees = Vector3(-total_bend * 0.92 + osc_x * 0.6, 0.0, 0.0)
 
 
 func has_visible_held_item() -> bool:
 	return _held_item_anchor != null and _held_item_anchor.visible
 
 
+func get_held_rod_bend_degrees() -> float:
+	return _held_rod_bend_deg
+
+
 func get_held_rod_tip_local_to_player() -> Vector3:
 	if _held_item_anchor == null:
 		return RodSimulator.HELD_TIP_LOCAL_OFFSET
+	if _held_tip_pivot != null:
+		return _held_item_anchor.transform * (_held_tip_pivot.transform * HELD_TIP_FROM_PIVOT)
 	return _held_item_anchor.transform * RodSimulator.HELD_TIP_LOCAL_OFFSET

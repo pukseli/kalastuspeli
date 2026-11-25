@@ -4,6 +4,12 @@ extends Node3D
 const CAMERA_OFFSET := Vector3(0.0, 7.0, 12.0)
 const CAMERA_PITCH_DEG: float = -28.0
 const WATER_Y: float = -0.25
+const LINE_HIGH_RATIO: float = 0.55
+const LINE_CRITICAL_RATIO: float = 0.80
+const METER_BAR_WIDTH: float = 252.0
+const METER_BAR_HEIGHT: float = 16.0
+const METER_SPOOL_HEIGHT: float = 6.0
+const METER_DRAG_MARKER_WIDTH: float = 4.0
 
 var boat_view: BoatView
 var camera: Camera3D
@@ -12,6 +18,15 @@ var catch_hud_label: Label
 var fish_alert_label: Label
 var prompt_label: Label
 var line_prompt_label: Label
+var tension_meter_root: Control
+var tension_meter_title: Label
+var tension_meter_footer: Label
+var tension_bar_bg: ColorRect
+var tension_danger_zone: ColorRect
+var tension_bar_fill: ColorRect
+var drag_marker: ColorRect
+var spool_bar_bg: ColorRect
+var spool_bar_fill: ColorRect
 var trolling_lines_container: Node3D
 var trolling_lines_mesh_instance: MeshInstance3D
 var planers_container: Node3D
@@ -48,6 +63,9 @@ var _planer_parts: Dictionary = {}
 var _fish_parts: Dictionary = {}
 var _fish_species_cache: Dictionary = {}
 var _line_start_world: Dictionary = {}
+var _line_points_by_rod: Dictionary = {}
+var _line_color_by_rod: Dictionary = {}
+var _line_vib_time: float = 0.0
 var _last_in_helm: bool = false
 
 
@@ -161,11 +179,77 @@ func _init() -> void:
 	line_prompt_label.position = Vector2(12.0, 504.0)
 	add_child(line_prompt_label)
 
+	_init_tension_meter_hud()
+
+
+func _init_tension_meter_hud() -> void:
+	tension_meter_root = Control.new()
+	tension_meter_root.name = "TensionMeterHUD"
+	tension_meter_root.position = Vector2(680.0, 416.0)
+	tension_meter_root.size = Vector2(268.0, 78.0)
+	tension_meter_root.visible = false
+	add_child(tension_meter_root)
+
+	var panel_bg := ColorRect.new()
+	panel_bg.position = Vector2.ZERO
+	panel_bg.size = Vector2(268.0, 78.0)
+	panel_bg.color = Color(0.06, 0.08, 0.11, 0.78)
+	tension_meter_root.add_child(panel_bg)
+
+	tension_meter_title = Label.new()
+	tension_meter_title.position = Vector2(8.0, 4.0)
+	tension_meter_title.size = Vector2(METER_BAR_WIDTH, 16.0)
+	tension_meter_title.add_theme_font_size_override("font_size", 12)
+	tension_meter_root.add_child(tension_meter_title)
+
+	tension_bar_bg = ColorRect.new()
+	tension_bar_bg.position = Vector2(8.0, 22.0)
+	tension_bar_bg.size = Vector2(METER_BAR_WIDTH, METER_BAR_HEIGHT)
+	tension_bar_bg.color = Color(0.14, 0.16, 0.20, 0.95)
+	tension_meter_root.add_child(tension_bar_bg)
+
+	tension_danger_zone = ColorRect.new()
+	tension_danger_zone.position = Vector2(METER_BAR_WIDTH * 0.80, 0.0)
+	tension_danger_zone.size = Vector2(METER_BAR_WIDTH * 0.20, METER_BAR_HEIGHT)
+	tension_danger_zone.color = Color(0.65, 0.14, 0.14, 0.55)
+	tension_bar_bg.add_child(tension_danger_zone)
+
+	tension_bar_fill = ColorRect.new()
+	tension_bar_fill.position = Vector2.ZERO
+	tension_bar_fill.size = Vector2(0.0, METER_BAR_HEIGHT)
+	tension_bar_fill.color = Color(0.24, 0.84, 0.36)
+	tension_bar_bg.add_child(tension_bar_fill)
+
+	drag_marker = ColorRect.new()
+	drag_marker.position = Vector2(0.0, -2.0)
+	drag_marker.size = Vector2(METER_DRAG_MARKER_WIDTH, METER_BAR_HEIGHT + 4.0)
+	drag_marker.color = Color(0.98, 0.98, 0.92)
+	tension_bar_bg.add_child(drag_marker)
+
+	spool_bar_bg = ColorRect.new()
+	spool_bar_bg.position = Vector2(8.0, 44.0)
+	spool_bar_bg.size = Vector2(METER_BAR_WIDTH, METER_SPOOL_HEIGHT)
+	spool_bar_bg.color = Color(0.14, 0.16, 0.20, 0.95)
+	tension_meter_root.add_child(spool_bar_bg)
+
+	spool_bar_fill = ColorRect.new()
+	spool_bar_fill.position = Vector2.ZERO
+	spool_bar_fill.size = Vector2(METER_BAR_WIDTH, METER_SPOOL_HEIGHT)
+	spool_bar_fill.color = Color(0.32, 0.74, 0.95)
+	spool_bar_bg.add_child(spool_bar_fill)
+
+	tension_meter_footer = Label.new()
+	tension_meter_footer.position = Vector2(8.0, 54.0)
+	tension_meter_footer.size = Vector2(METER_BAR_WIDTH, 18.0)
+	tension_meter_footer.add_theme_font_size_override("font_size", 11)
+	tension_meter_root.add_child(tension_meter_footer)
+
 
 func _init_trolling_resources() -> void:
 	_line_mat = StandardMaterial3D.new()
 	_line_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_line_mat.albedo_color = Color(0.92, 0.96, 1.0)
+	_line_mat.vertex_color_use_as_albedo = true
+	_line_mat.albedo_color = Color.WHITE
 
 	_planer_body_mesh = BoxMesh.new()
 	_planer_body_mesh.size = Vector3(0.28, 0.12, 0.55)
@@ -278,6 +362,7 @@ func apply_state(boat: BoatState, net_info: String = "") -> void:
 	if not net_info.is_empty():
 		net_status_text = net_info
 	boat_view.apply_state(boat)
+	_update_tension_meter_hud(null, null, null)
 	_update_camera_and_hud(boat, "", false, false, "—")
 
 
@@ -286,11 +371,13 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 		net_status_text = net_info
 	_tick_boat_pos = game_state.boat.world_position
 	_tick_boat_heading = game_state.boat.heading
+	if step_frame:
+		_line_vib_time += 1.0 / 60.0
 	if trolling_lines_container != null:
 		trolling_lines_container.transform = Transform3D.IDENTITY
 	boat_view.apply_state(game_state.boat, step_frame)
-	boat_view.apply_items(game_state.items, game_state.item_config, game_state.fishes)
-	boat_view.apply_players(game_state.players, game_state.items, game_state.fishes)
+	boat_view.apply_items(game_state.items, game_state.item_config, game_state.fishes, game_state.rods)
+	boat_view.apply_players(game_state.players, game_state.items, game_state.fishes, game_state.rods)
 	_apply_trolling_rods(game_state)
 	if step_frame:
 		_step_raikka_audio(game_state, 1.0 / 60.0)
@@ -304,6 +391,9 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 	var line_prompt := ""
 	var best_hid := ""
 	var best_holder: Dictionary = {}
+	var active_rod_item: HeldItem = null
+	var active_rod: RodState = null
+	var active_fish: FishState = null
 
 	if not active_station.is_empty():
 		var cfg := StationConfig.get_station_config(active_station)
@@ -412,7 +502,6 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 				var rod_name := _format_held_item_label(scoop_item)
 				line_prompt = "[Space] Kauhaise (%d%%) | %s | %s" % [scoop_pct, sp_label, rod_name]
 
-		var active_rod_item: HeldItem = null
 		if held_item != null and held_item.item_type == ItemConfig.ITEM_TYPE_ROD:
 			active_rod_item = held_item
 		elif held_item == null and not deck_prompt_active and game_state.item_config != null:
@@ -433,12 +522,13 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 					best_rod_dist = dist
 					active_rod_item = nearby_item
 
+		if active_rod_item != null:
+			active_rod = game_state.get_rod_state(active_rod_item.id)
+			active_fish = game_state.get_fish_state(active_rod_item.id)
 		if line_prompt.is_empty() and active_rod_item != null:
-			var active_rod := game_state.get_rod_state(active_rod_item.id)
 			if active_rod != null:
 				var rod_name := _format_held_item_label(active_rod_item)
 				var planer_tag := " (Plaanari)" if active_rod.planer.attached else ""
-				var active_fish := game_state.get_fish_state(active_rod_item.id)
 				if active_fish != null:
 					var fish_dist := _fish_simulator_helper.get_fish_distance(active_rod, _rod_simulator_helper)
 					if held_item == active_rod_item:
@@ -526,6 +616,7 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 				elif active_fish != null and not active_fish.is_ready_to_land() and active_rod.line_tension < LinePhysics.SLACK_TENSION_THRESHOLD:
 					line_prompt += " [LÖYSÄ!]"
 
+	_update_tension_meter_hud(active_rod_item, active_rod, active_fish)
 	var fish_alert := _build_fish_alert_text(game_state)
 	var catch_hud := _build_catch_hud_text(game_state)
 	_update_camera_and_hud(
@@ -646,7 +737,49 @@ func _build_fish_alert_text(game_state: GameState) -> String:
 	return "TÄRPPI! %s%s" % [", ".join(tripped_labels), drag_suffix]
 
 
+func _update_tension_meter_hud(item: HeldItem, rod: RodState, fish: FishState) -> void:
+	if tension_meter_root == null:
+		return
+	if item == null or rod == null:
+		tension_meter_root.visible = false
+		return
+	tension_meter_root.visible = true
+	var eff_max := maxf(1.0, rod.get_effective_max_strength())
+	var max_scale := RodState.MAX_DRAG_SETTING
+	var tension_ratio := clampf(rod.line_tension / eff_max, 0.0, 1.0)
+	tension_bar_fill.size.x = clampf(rod.line_tension / max_scale, 0.0, 1.0) * METER_BAR_WIDTH
+	if tension_ratio >= LINE_CRITICAL_RATIO:
+		tension_bar_fill.color = Color(0.96, 0.20, 0.16)
+	elif tension_ratio >= LINE_HIGH_RATIO or rod.is_drag_slipping:
+		tension_bar_fill.color = Color(0.96, 0.74, 0.18)
+	elif rod.is_deployed() and rod.line_tension < LinePhysics.SLACK_TENSION_THRESHOLD:
+		tension_bar_fill.color = Color(0.45, 0.72, 0.88)
+	else:
+		tension_bar_fill.color = Color(0.24, 0.84, 0.36)
+
+	var break_x := clampf(eff_max / max_scale, 0.0, 1.0) * METER_BAR_WIDTH
+	tension_danger_zone.position.x = break_x
+	tension_danger_zone.size.x = maxf(0.0, METER_BAR_WIDTH - break_x)
+
+	var drag_x := clampf(rod.drag_setting / max_scale, 0.0, 1.0) * METER_BAR_WIDTH - METER_DRAG_MARKER_WIDTH * 0.5
+	drag_marker.position.x = clampf(drag_x, 0.0, METER_BAR_WIDTH - METER_DRAG_MARKER_WIDTH)
+
+	var spool_ratio := clampf(rod.line_remaining_on_spool / RodState.DEFAULT_SPOOL_CAPACITY, 0.0, 1.0)
+	spool_bar_fill.size.x = spool_ratio * METER_BAR_WIDTH
+	spool_bar_fill.color = Color(0.92, 0.32, 0.22) if spool_ratio < 0.20 else Color(0.32, 0.74, 0.95)
+
+	var label := _format_held_item_label(item)
+	var slip_tag := " [RÄIKKÄ]" if (rod.is_drag_slipping or (fish != null and fish.is_drag_active())) else ""
+	tension_meter_title.text = "%s | Kireys %d%%%s" % [label, roundi((rod.line_tension / eff_max) * 100.0), slip_tag]
+	tension_meter_footer.text = "Jarru [Z/X]: %d N | Murtoraja: %d N | Puola: %d m" % [
+		roundi(rod.drag_setting),
+		roundi(eff_max),
+		roundi(rod.line_remaining_on_spool),
+	]
+
+
 func update_frame(blend: Dictionary, delta: float, game_state: GameState = null) -> void:
+	_line_vib_time += maxf(0.0, delta)
 	var b_pos: Vector3 = blend.get("boat_pos", _tick_boat_pos)
 	var b_head: float = float(blend.get("boat_heading", _tick_boat_heading))
 	boat_view.apply_frame(b_pos, b_head, delta)
@@ -696,18 +829,44 @@ func _set_mat(mi: MeshInstance3D, mat: Material) -> void:
 		material_assign_count += 1
 
 
+static func compute_line_color(tension_ratio: float, is_slack: bool, is_slipping: bool, planer_state: String) -> Color:
+	if tension_ratio >= LINE_CRITICAL_RATIO:
+		return Color(0.98, 0.22, 0.18)
+	if planer_state == PlanerBoard.STATE_TANGLED:
+		return Color(0.78, 0.34, 0.94)
+	if planer_state == PlanerBoard.STATE_SNAGGED:
+		return Color(0.96, 0.36, 0.20)
+	if is_slack:
+		return Color(0.50, 0.72, 0.86)
+	if is_slipping or tension_ratio >= LINE_HIGH_RATIO:
+		return Color(0.98, 0.78, 0.22)
+	return Color(0.92, 0.96, 1.0)
+
+
 func get_line_start_world(rod_id: String) -> Vector3:
 	return _line_start_world.get(rod_id, Vector3.ZERO) as Vector3
+
+
+func get_line_points_world(rod_id: String) -> PackedVector3Array:
+	return _line_points_by_rod.get(rod_id, PackedVector3Array()) as PackedVector3Array
+
+
+func get_line_color(rod_id: String) -> Color:
+	return _line_color_by_rod.get(rod_id, Color(0.92, 0.96, 1.0)) as Color
 
 
 func _apply_trolling_rods(game_state: GameState) -> void:
 	_lines_mesh.clear_surfaces()
 	_line_start_world.clear()
+	_line_points_by_rod.clear()
+	_line_color_by_rod.clear()
 	var line_vertices: Array[Vector3] = []
+	var line_colors: Array[Color] = []
 	var deployed_rods: Dictionary = {}
 	var active_planers: Dictionary = {}
 	var active_lures: Dictionary = {}
 	var active_fishes: Dictionary = {}
+	var aft_world := Vector3(sin(game_state.boat.heading), 0.0, cos(game_state.boat.heading))
 
 	for rid in game_state.rods:
 		var rod := game_state.rods[rid] as RodState
@@ -747,6 +906,25 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			end_world = Vector3(lure_2d.x, WATER_Y + 0.05, lure_2d.y)
 			active_lures[rid_str] = {"pos": end_world, "color_index": item.color_index}
 
+		var eff_max := maxf(1.0, rod.get_effective_max_strength())
+		var tension_ratio := clampf(rod.line_tension / eff_max, 0.0, 1.0)
+		var is_slack := rod.line_tension < LinePhysics.SLACK_TENSION_THRESHOLD
+		var is_slipping := rod.is_drag_slipping or (fish != null and fish.is_drag_active())
+		var line_color := compute_line_color(tension_ratio, is_slack, is_slipping, rod.planer.state)
+		_line_color_by_rod[rid_str] = line_color
+
+		var tautness := clampf(maxf(rod.line_tension / 45.0, tension_ratio), 0.0, 1.0)
+		var straighten := 1.0 - pow(1.0 - tautness, 2.0)
+		var vib_amp := 0.0
+		if tension_ratio >= LINE_CRITICAL_RATIO:
+			var crit_t := clampf((tension_ratio - LINE_CRITICAL_RATIO) / (1.0 - LINE_CRITICAL_RATIO), 0.0, 1.0)
+			vib_amp = lerpf(0.035, 0.085, crit_t)
+		elif is_slipping:
+			vib_amp = 0.012
+		var vib_phase := (_line_vib_time + float(game_state.tick) * (1.0 / 60.0)) * 28.0 + float(rid_str.hash() & 0xFF) * 0.13
+		var rod_poly: Array[Vector3] = []
+
+		var main_end := end_world
 		if rod.planer.attached:
 			var board_2d := _rod_simulator_helper.get_board_world_pos_2d(game_state, item, rod)
 			var submersion := rod.planer.submersion
@@ -756,13 +934,13 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			var shake_y := cos(phase * 17.0) * 0.04 * shake
 			var shake_z := sin(phase * 13.0) * 0.08 * shake
 			var board_y := WATER_Y + 0.05 - submersion * 0.65 + shake_y
-			var board_world := Vector3(board_2d.x + shake_x, board_y, board_2d.y + shake_z)
+			main_end = Vector3(board_2d.x + shake_x, board_y, board_2d.y + shake_z)
 			var board_pitch := clampf(rod.planer.pull_back_offset * 0.085, 0.0, 0.60)
 			var board_roll := sin(phase * 9.0) * 0.35 * shake
 			var board_yaw := game_state.boat.heading + rod.trail_angle + cos(phase * 7.0) * 0.18 * shake
 			var detach_ready := FishSimulator.is_rod_ready_for_planer_detach(rod, fish)
 			active_planers[rid_str] = {
-				"pos": board_world,
+				"pos": main_end,
 				"state": rod.planer.state,
 				"yaw": board_yaw,
 				"pitch": board_pitch,
@@ -770,15 +948,23 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 				"flag_angle": rod.planer.flag_angle,
 				"detach_ready": detach_ready,
 			}
-			_append_curved_segment(line_vertices, tip_world, board_world, 3, 0.22)
-			_append_curved_segment(line_vertices, board_world, end_world, 2, 0.0)
-		else:
-			_append_curved_segment(line_vertices, tip_world, end_world, 4, 0.30)
+
+		var span := tip_world.distance_to(main_end)
+		var sag := lerpf(minf(1.10, span * 0.14), minf(0.025, span * 0.002), straighten)
+		var aft_bow := sag * 0.26 * (1.0 - straighten)
+		_append_curved_segment(line_vertices, line_colors, rod_poly, tip_world, main_end, 4, sag, line_color, aft_world, aft_bow, vib_amp, vib_phase)
+		if rod.planer.attached:
+			var leader_span := main_end.distance_to(end_world)
+			var leader_sag := lerpf(minf(0.18, leader_span * 0.05), 0.0, straighten)
+			_append_curved_segment(line_vertices, line_colors, rod_poly, main_end, end_world, 2, leader_sag, line_color, aft_world, 0.0, vib_amp * 0.6, vib_phase + 1.1)
+
+		_line_points_by_rod[rid_str] = PackedVector3Array(rod_poly)
 
 	if not line_vertices.is_empty():
 		_lines_mesh.surface_begin(Mesh.PRIMITIVE_LINES, _line_mat)
-		for v in line_vertices:
-			_lines_mesh.surface_add_vertex(v)
+		for idx in range(line_vertices.size()):
+			_lines_mesh.surface_set_color(line_colors[idx])
+			_lines_mesh.surface_add_vertex(line_vertices[idx])
 		_lines_mesh.surface_end()
 
 	for existing_pid in _planer_views.keys():
@@ -856,19 +1042,48 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 		_update_fish_visual_species(rid, f_node, sp)
 
 
-func _append_curved_segment(out: Array[Vector3], start_pos: Vector3, end_pos: Vector3, segments: int, max_sag: float) -> void:
+func _append_curved_segment(
+	out_verts: Array[Vector3],
+	out_colors: Array[Color],
+	out_poly: Array[Vector3],
+	start_pos: Vector3,
+	end_pos: Vector3,
+	segments: int,
+	sag: float,
+	line_color: Color,
+	aft_world: Vector3,
+	aft_bow: float,
+	vib_amp: float,
+	vib_phase: float
+) -> void:
 	var count := maxi(1, segments)
-	var span := start_pos.distance_to(end_pos)
-	var sag := minf(max_sag, span * 0.025)
+	var chord := end_pos - start_pos
+	var lat_dir := Vector3(-chord.z, 0.0, chord.x)
+	if lat_dir.length_squared() > 0.0001:
+		lat_dir = lat_dir.normalized()
+	else:
+		lat_dir = Vector3.RIGHT
+	var floor_y := minf(WATER_Y + 0.03, minf(start_pos.y, end_pos.y))
+	if out_poly.is_empty():
+		out_poly.append(start_pos)
 	var prev := start_pos
 	for i in range(1, count + 1):
 		var frac := float(i) / float(count)
 		var pt := start_pos.lerp(end_pos, frac)
-		pt.y -= sin(frac * PI) * sag
-		var floor_y := minf(WATER_Y + 0.03, minf(start_pos.y, end_pos.y))
-		pt.y = maxf(pt.y, floor_y)
-		out.append(prev)
-		out.append(pt)
+		if i < count:
+			var arc := sin(frac * PI)
+			pt.y -= arc * sag
+			pt += aft_world * (arc * aft_bow)
+			if vib_amp > 0.0001:
+				var osc := sin(vib_phase + float(i) * 1.9)
+				pt += lat_dir * (arc * osc * vib_amp)
+				pt.y += arc * cos(vib_phase * 1.3 + float(i) * 1.7) * (vib_amp * 0.45)
+			pt.y = maxf(pt.y, floor_y)
+		out_verts.append(prev)
+		out_verts.append(pt)
+		out_colors.append(line_color)
+		out_colors.append(line_color)
+		out_poly.append(pt)
 		prev = pt
 
 
