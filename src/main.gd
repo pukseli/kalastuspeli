@@ -18,6 +18,8 @@ var _display_state: GameState = null
 var _view_tick_dirty: bool = false
 var _rmb_dragging: bool = false
 var _quitting: bool = false
+var _cli_snapshot_ref: String = ""
+var _active_snapshot: GameSnapshot = null
 
 
 func _ready() -> void:
@@ -36,6 +38,12 @@ func _ready() -> void:
 	network_manager.interpolator.item_config = item_config
 	network_manager.game_snapshot_received.connect(_on_game_snapshot_received)
 	network_manager.start_session()
+
+	if not env_config.is_prod() and network_manager.is_authority():
+		var cli_snap := GameSnapshot.extract_cli_snapshot(cli_args)
+		if not cli_snap.is_empty():
+			_cli_snapshot_ref = cli_snap
+			_load_test_snapshot(cli_snap, false)
 
 	world_view = WorldView.new()
 	add_child(world_view)
@@ -92,6 +100,8 @@ func _request_quit() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		var key_event := event as InputEventKey
+		var no_modifiers := not key_event.alt_pressed and not key_event.ctrl_pressed and not key_event.meta_pressed
 		if event.physical_keycode == KEY_T or event.keycode == KEY_T:
 			if env_config.debug_hotkeys:
 				network_manager.cycle_sync_rate()
@@ -113,6 +123,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		elif event.physical_keycode == KEY_F or event.keycode == KEY_F:
 			if env_config.debug_hotkeys and network_manager.is_authority():
 				fish_simulator.force_bite(game_state, rod_simulator)
+		elif no_modifiers and (event.physical_keycode == KEY_F5 or event.keycode == KEY_F5):
+			if env_config.debug_hotkeys and not env_config.is_prod() and network_manager.is_authority():
+				_save_quicksave_snapshot()
+		elif no_modifiers and (event.physical_keycode == KEY_F9 or event.keycode == KEY_F9):
+			if env_config.debug_hotkeys and not env_config.is_prod() and network_manager.is_authority():
+				var target := _cli_snapshot_ref
+				if target.is_empty():
+					target = GameSnapshot.QUICKSAVE_PATH if FileAccess.file_exists(GameSnapshot.QUICKSAVE_PATH) else GameSnapshot.DEFAULT_TEST_SNAPSHOT
+				_load_test_snapshot(target, true)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -138,6 +157,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(_delta: float) -> void:
 	_read_local_input()
+	if _active_snapshot != null and not env_config.is_prod() and network_manager.is_authority():
+		_active_snapshot.step(game_state, rod_simulator, fish_simulator, BoatSimulator.FIXED_DELTA)
 	network_manager.step_game_tick(game_state, player_input, boat_simulator, crew_simulator, station_simulator, item_simulator, rod_simulator, fish_simulator)
 	player_input.interact = false
 	var display_state := game_state
@@ -147,6 +168,45 @@ func _physics_process(_delta: float) -> void:
 	_display_state = display_state
 	render_interpolator.capture(display_state)
 	_view_tick_dirty = true
+
+
+func _load_test_snapshot(ref_or_path: String, snap_view: bool = true) -> bool:
+	if env_config.is_prod() or not network_manager.is_authority():
+		return false
+	if _active_snapshot != null:
+		_active_snapshot.restore_bite_rate()
+		_active_snapshot = null
+	var loaded := GameSnapshot.load_from_file(ref_or_path)
+	if loaded == null:
+		return false
+	if not loaded.apply_to(game_state, fish_simulator, true):
+		return false
+	_active_snapshot = loaded
+	if game_state.fish_notice_text.is_empty():
+		var label := loaded.snapshot_name if not loaded.snapshot_name.is_empty() else ref_or_path
+		var notice_dur := 2.5
+		if loaded.has_pending_events():
+			var next_delay := loaded.get_next_event_remaining_sec()
+			if next_delay >= 0.0:
+				notice_dur = minf(1.8, maxf(0.4, next_delay - 0.2))
+		game_state.set_fish_notice("Snapshot ladattu: %s" % label, notice_dur)
+	if snap_view and world_view != null:
+		render_interpolator = RenderInterpolator.new()
+		render_interpolator.capture(game_state)
+		_display_state = game_state
+		world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id(), true)
+		_view_tick_dirty = false
+	return true
+
+
+func _save_quicksave_snapshot() -> bool:
+	if env_config.is_prod() or not network_manager.is_authority():
+		return false
+	var snap := GameSnapshot.capture_from_state(game_state, "quicksave", "Manual quicksave from test session")
+	if not snap.save_to_file(GameSnapshot.QUICKSAVE_PATH):
+		return false
+	game_state.set_fish_notice("Snapshot tallennettu: quicksave", 2.5)
+	return true
 
 
 func _process(delta: float) -> void:

@@ -1,0 +1,309 @@
+{
+	"version": 1,
+	"name": "whale_strike_2s",
+	"description": "Trolling at 3.0 m/s with 6 deployed rods; a 115,000 kg blue whale strikes rod_4 (+2 starboard planer) after 2.0 seconds.",
+	"rng_seed": 42069,
+	"suppress_auto_bites_while_pending": true,
+	"state": {
+		"tick": 120,
+		"boat": {
+			"x": 0.0,
+			"y": 0.0,
+			"z": 0.0,
+			"heading": 0.0,
+			"forward_speed": 3.0,
+			"vx": 0.0,
+			"vz": -3.0,
+			"angular_velocity": 0.0,
+			"throttle": 0.183333,
+			"steering_angle": 0.0
+		},
+		"players": {
+			"1": {
+				"peer_id": 1,
+				"x": 1.0,
+				"y": 0.25,
+				"z": 2.1,
+				"color_index": 0,
+				"is_bot": false
+			}
+		},
+		"stations": {
+			"helm": 0
+		},
+		"items": {
+			"rod_1": {
+				"id": "rod_1",
+				"item_type": "rod",
+				"color_index": 0,
+				"carrier_peer_id": 0,
+				"holder_id": "rod_-1",
+				"last_holder_id": "rod_-1",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.0,
+					"z": 0.0
+				}
+			},
+			"rod_2": {
+				"id": "rod_2",
+				"item_type": "rod",
+				"color_index": 1,
+				"carrier_peer_id": 0,
+				"holder_id": "rod_+1",
+				"last_holder_id": "rod_+1",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.0,
+					"z": 0.0
+				}
+			},
+			"rod_3": {
+				"id": "rod_3",
+				"item_type": "rod",
+				"color_index": 2,
+				"carrier_peer_id": 0,
+				"holder_id": "rod_-2",
+				"last_holder_id": "rod_-2",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.0,
+					"z": 0.0
+				}
+			},
+			"rod_4": {
+				"id": "rod_4",
+				"item_type": "rod",
+				"color_index": 3,
+				"carrier_peer_id": 0,
+				"holder_id": "rod_+2",
+				"last_holder_id": "rod_+2",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.0,
+					"z": 0.0
+				}
+			},
+			"rod_5": {
+				"id": "rod_5",
+				"item_type": "rod",
+				"color_index": 4,
+				"carrier_peer_id": 0,
+				"holder_id": "rod_-3",
+				"last_holder_id": "rod_-3",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.0,
+					"z": 0.0
+				}
+			},
+			"rod_6": {
+				"id": "rod_6",
+				"item_type": "rod",
+				"color_index": 5,
+				"carrier_peer_id": 0,
+				"holder_id": "rod_+3",
+				"last_holder_id": "rod_+3",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.0,
+					"z": 0.0
+				}
+			},
+			"net_1": {
+				"id": "net_1",
+				"item_type": "net",
+				"color_index": 0,
+				"carrier_peer_id": 0,
+				"holder_id": "",
+				"last_holder_id": "",
+				"deck_position": {
+					"x": 0.0,
+					"y": 0.25,
+					"z": 0.6
+				}
+			}
+		},
+		"rods": {
+			"rod_1": {
+				"rod_id": "rod_1",
+				"trail_angle": -0.139626,
+				"trail_factor": 1.0,
+				"line_tension": 16.2,
+				"line_max_strength": 100.0,
+				"drag_setting": 60.0,
+				"line_remaining_on_spool": 134.0,
+				"line_integrity": 1.0,
+				"is_drag_slipping": false,
+				"planer": {
+					"side": -1,
+					"attached": false,
+					"lateral_offset": 0.0,
+					"line_out": 16.0,
+					"state": "TROLLING",
+					"snag_world_position": {
+						"x": 0.0,
+						"y": 0.0
+					},
+					"pull_back_offset": 0.0,
+					"submersion": 0.0,
+					"flag_angle": 0.0,
+					"shake_intensity": 0.0,
+					"inward_drift_force": 0.0
+				}
+			},
+			"rod_2": {
+				"rod_id": "rod_2",
+				"trail_angle": 0.139626,
+				"trail_factor": 1.0,
+				"line_tension": 16.2,
+				"line_max_strength": 100.0,
+				"drag_setting": 60.0,
+				"line_remaining_on_spool": 134.0,
+				"line_integrity": 1.0,
+				"is_drag_slipping": false,
+				"planer": {
+					"side": 1,
+					"attached": false,
+					"lateral_offset": 0.0,
+					"line_out": 16.0,
+					"state": "TROLLING",
+					"snag_world_position": {
+						"x": 0.0,
+						"y": 0.0
+					},
+					"pull_back_offset": 0.0,
+					"submersion": 0.0,
+					"flag_angle": 0.0,
+					"shake_intensity": 0.0,
+					"inward_drift_force": 0.0
+				}
+			},
+			"rod_3": {
+				"rod_id": "rod_3",
+				"trail_angle": 0.0,
+				"trail_factor": 1.0,
+				"line_tension": 24.6,
+				"line_max_strength": 100.0,
+				"drag_setting": 60.0,
+				"line_remaining_on_spool": 132.0,
+				"line_integrity": 1.0,
+				"is_drag_slipping": false,
+				"planer": {
+					"side": -1,
+					"attached": true,
+					"lateral_offset": -11.0819,
+					"line_out": 18.0,
+					"state": "TROLLING",
+					"snag_world_position": {
+						"x": 0.0,
+						"y": 0.0
+					},
+					"pull_back_offset": 0.0,
+					"submersion": 0.0,
+					"flag_angle": 0.0,
+					"shake_intensity": 0.0,
+					"inward_drift_force": 0.0
+				}
+			},
+			"rod_4": {
+				"rod_id": "rod_4",
+				"trail_angle": 0.0,
+				"trail_factor": 1.0,
+				"line_tension": 24.6,
+				"line_max_strength": 100.0,
+				"drag_setting": 60.0,
+				"line_remaining_on_spool": 132.0,
+				"line_integrity": 1.0,
+				"is_drag_slipping": false,
+				"planer": {
+					"side": 1,
+					"attached": true,
+					"lateral_offset": 11.0819,
+					"line_out": 18.0,
+					"state": "TROLLING",
+					"snag_world_position": {
+						"x": 0.0,
+						"y": 0.0
+					},
+					"pull_back_offset": 0.0,
+					"submersion": 0.0,
+					"flag_angle": 0.0,
+					"shake_intensity": 0.0,
+					"inward_drift_force": 0.0
+				}
+			},
+			"rod_5": {
+				"rod_id": "rod_5",
+				"trail_angle": 0.0,
+				"trail_factor": 1.0,
+				"line_tension": 26.4,
+				"line_max_strength": 100.0,
+				"drag_setting": 60.0,
+				"line_remaining_on_spool": 128.0,
+				"line_integrity": 1.0,
+				"is_drag_slipping": false,
+				"planer": {
+					"side": -1,
+					"attached": true,
+					"lateral_offset": -18.0213,
+					"line_out": 22.0,
+					"state": "TROLLING",
+					"snag_world_position": {
+						"x": 0.0,
+						"y": 0.0
+					},
+					"pull_back_offset": 0.0,
+					"submersion": 0.0,
+					"flag_angle": 0.0,
+					"shake_intensity": 0.0,
+					"inward_drift_force": 0.0
+				}
+			},
+			"rod_6": {
+				"rod_id": "rod_6",
+				"trail_angle": 0.0,
+				"trail_factor": 1.0,
+				"line_tension": 26.4,
+				"line_max_strength": 100.0,
+				"drag_setting": 60.0,
+				"line_remaining_on_spool": 128.0,
+				"line_integrity": 1.0,
+				"is_drag_slipping": false,
+				"planer": {
+					"side": 1,
+					"attached": true,
+					"lateral_offset": 18.0213,
+					"line_out": 22.0,
+					"state": "TROLLING",
+					"snag_world_position": {
+						"x": 0.0,
+						"y": 0.0
+					},
+					"pull_back_offset": 0.0,
+					"submersion": 0.0,
+					"flag_angle": 0.0,
+					"shake_intensity": 0.0,
+					"inward_drift_force": 0.0
+				}
+			}
+		},
+		"fishes": {},
+		"catches": [],
+		"catch_count": 0,
+		"biggest_catch_kg": 0.0,
+		"fish_notice_seq": 0,
+		"fish_notice_text": "",
+		"fish_notice_timer": 0.0
+	},
+	"scheduled_events": [
+		{
+			"delay_sec": 2.0,
+			"type": "force_bite",
+			"rod_id": "rod_4",
+			"species": "blue_whale",
+			"weight_kg": 115000.0,
+			"trigger_jump": true
+		}
+	]
+}
