@@ -45,7 +45,7 @@ Pelissä käytetään **pikkuplaanaria** eli siimaan vavan ja vieheen väliin ki
 | `TROLLING` | Vakaa uisteluasema saavutettu | Pitää sivuetäisyyden vauhdista riippuvana; antaa tärppibonuksen | Vauhdin hiipuminen / kääntösotku → `TANGLED`; tärppi → `TRIPPED`; este → `SNAGGED`; sisäänkelaus `0 m` → `STOWED` |
 | `TRIPPED` | Kala iskee plaanarin takana olevaan vieheeseen (`S9`) | Vetoteho putoaa murto-osaan (`tripped_pull_factor = 0.15`), plaanari nykäisee taaksepäin/sisään ja lippu reagoi | Kelataan laidalle (`line_out <= detach_distance`) → pelaaja irrottaa plaanarin (`E`) → `attached = false`, `state = STOWED` |
 | `TANGLED` | Plaanarien tai veneen kyljen välinen kynnys rikkoutuu (`S12`) | Plaanari ei levittäydy; siima lukittuu sotkuun eikä vedä kaloja | Selvitys kannella → `STOWED` (tai uudelleenlaskuun `DEPLOYING`) |
-| `SNAGGED` | Plaanari tai viehe osuu esteeseen / karikkoon (`S16`) | Lukittuu `snag_world_position`-pisteeseen; siiman kireys nousee nopeasti veneen liikkuessa eteenpäin | Veneen pysäytys/peruutus ja irrotus → `DEPLOYING` / `STOWED`, tai siiman katkeaminen (`S11`) |
+| `SNAGGED` | Plaanari tai viehe osuu esteeseen / karikkoon (`S16`) | Lukittuu `snag_world_position`-pisteeseen; siiman kireys nousee nopeasti veneen liikkuessa eteenpäin | Veneen pysäytys/peruutus ja irrotus → `DEPLOYING` / `STOWED`, tai siiman katkeaminen (`S11a`) |
 
 > **Telineiden välinen siirto (`±2 ↔ ±1`):** Vedessä olevan vavan (`line_out > 0`) siirtäminen telineestä toiseen säilyttää `attached`-tilan ja käyttää uuden telineen `spread_angle_deg`-kulmaa (`±1`-perätelineessä `8°` tekee tilaa pujotukselle). Ylös kelatun (`STOWED`) vavan `attached` synkronoituu telineen `default_planer_attached`-oletukseen (kunnes `S10` lisää manuaalisen kiinnityksen/irrotuksen).
 
@@ -133,7 +133,7 @@ Esteet esitetään kevyellä 2D-ympyrärajapinnalla `{position: Vector2, radius:
 - Jokaisella tikillä testataan aktiivisten plaanarien ja niiden vieheiden osuma esteisiin:
   $$\lVert \vec{p}_{\text{board}} - \vec{p}_{\text{obs}} \rVert \le r_{\text{obs}} + r_{\text{board}} \quad \text{tai} \quad \lVert \vec{p}_{\text{lure}} - \vec{p}_{\text{obs}} \rVert \le r_{\text{obs}} + r_{\text{lure}}$$
 - Osuma vaihtaa tilaksi `SNAGGED` ja tallentaa osumakohdan kenttään `snag_world_position`.
-- Veneen jatkaessa eteenpäin etäisyys vavan kärjestä `snag_world_position`-pisteeseen ylittää `line_out`-arvon, mikä kasvattaa siiman kireyttä (`snag_tension_rate`) ja katkaisee siiman (`S11`), ellei kippari pysäytä tai peruuta vapauttaakseen plaanarin.
+- Veneen jatkaessa eteenpäin etäisyys vavan kärjestä `snag_world_position`-pisteeseen ylittää `line_out`-arvon, jolloin kelan jarru alkaa luistaa ja puola tyhjentyä. Jos puola tyhjenee loppuun tai jarru on lukittu yli siiman lujuuden, siima katkeaa (`S11a`), ellei kippari pysäytä tai peruuta vapauttaakseen plaanarin.
 
 ### 3.5 D. Tärppi (`TRIPPED`), kalan koon mukainen reaktio, kelaus ja irrotus (Tiimityö)
 
@@ -199,6 +199,6 @@ Koska projektin arkkitehtuuri ([`specs/00-architecture.md`](../00-architecture.m
 | **S9a (`09a-bite-and-reel`)** | `TRIPPED`-tila ja lipun reaktio kalan koon mukaan, taistelusykli, `quiet_water_bite_bonus` ja parvietäisyys vieheen sijainnista. |
 | **S9b (`09b-planer-detach`)** | Plaanarin irrotuslukko laidalla (`detach_distance = 2.0 m`) sekä jatkuva `E`-pitoirrotus (`interact_held` + `detach_progress`) yksin telineestä tai kaverin auttamana. |
 | **S10 (`10-landing-net-and-catch`)** | Haavitus veneen laidalta sumppuun (`READY_TO_LAND`) ja saalislaskuri. |
-| **S11 (`11-line-tension`)** | `snag_tension_rate`-kireysnousu sekä plaanarin vaikutus kireyteen. |
+| **S11a (`11a-line-physics-and-drag`)** | Siiman jännityksen muodostuminen (`line_tension`), kelan jarru (`drag_setting`, `is_drag_slipping`) ja katkeamismekaniikka (ks. [`line-physics.md`](line-physics.md)). |
 | **S12 (`12-trolling-window-and-tangles`)** | Sisäkaarteen ja pysähdyksen `TANGLED`-törmäystunnistus + solmun selvitys kannella. |
-| **S16 (`16-lake-obstacles`)** | `WorldFeatures`-esteet (saaret/karikot) ja `SNAGGED`-lukitus. |
+| **S16 (`16-lake-obstacles`)** | `WorldFeatures`-esteet (saaret/karikot), `SNAGGED`-lukitus ja kovavauhtinen shokkikuormakatkeaminen. |

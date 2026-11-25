@@ -18,8 +18,14 @@
 | S9a | `09a-bite-and-reel` | saada tärpin vapaan (lajikohtaiset signaalit, jarru/räikkä, pintahypyt), kelata kalan vapa kädessä veneen viereen ja yrittää nostoa ilman haavia | `FishState` (tärppi, lajit, jarru/räikkä ja kelaus) | `done` |
 | S9b | `09b-planer-detach` | kelata plaanarin veneen laidalle irrotuslukkoon ja irrottaa sen pitämällä `E`-näppäintä pohjassa mittarin täyttymiseen asti (yksin tai kaverin auttamana) | Jatkuva pidettävä interaktio (`PlayerInput.interact_held` + `detach_progress`) | `done` |
 | S10 | `10-landing-net-and-catch` | poimia keskikannella lojuvan haavin (`E`), pudottaa sen vapaasti kannelle, kauhaista kalan (onnistuminen väsymyksen mukaan) ja nähdä tiimin saalislaskurin ⛳ | Haavi (`HeldItem` `"net"` + vapaa kansisijainti) ja saalisloki | `done` |
-| S11 | `11-line-tension` | hallita siiman kireyttä kalan syöksyissä: ylikelaus katkaisee siiman, löysä siima päästää kalan | Siiman kireys (`tension`) | `draft` |
-| S11b | `11b-fish-fatigue` | väsyttää isoja kaloja aktiivisesti oikealla rytmillä ja jarrulla ennen haavitusta | Kalan syvempi väsytysmalli (`stamina`-silmukka) | `draft` |
+| S10c | `10c-catch-summary` | pelata pitkiä uistelusessioita ilman että kasvava saalismäärä hidastaa peliä tai paisuttaa verkkopaketteja | Tiivistetty saalisloki (`catch_count`, `biggest_catch_kg`, `CATCH_LOG_MAX = 20`) | `done` |
+| S10d | `10d-lean-client-snapshot` | liittyä peliin clientinä ilman kaksinkertaista snapshotin parsintaa, turhia `to_dict()`-allokaatioita tai aikahyppyjä taaksepäin | Kertaparsittu snapshot (`GameState.new(false)`, `copy_from`, monotoninen `tick`-suodatus) | `done` |
+| S10e | `10e-render-decoupling` | pelata 120/144 Hz:n näytöllä ilman 60 Hz:n mikronykimistä ja irrottaa piirto fysiikkatickistä | Render-interpolaatio (`RenderInterpolator` + `_process(delta)`) | `done` |
+| S10f | `10f-view-dirty-checks` | ajaa näkymäpäivitystä ilman turhia materiaali-/polkuhakuja ja nähdä siiman pysyvän kiinni taipuvan 3D-vavan kärjessä | Näkymäkerroksen dirty-tarkistus ja visuaalinen 3D-vavan kärkisynkka | `done` |
+| S10g | `10g-sim-indexes` | ajaa simulaatiotickiä $O(1)$-telinehaulla ja ilman ruorin `E`-kaappausta tai plaanarin palautusbugia | Simulaation hakemistot (`_holder_index`, `tip_local_position`, `_collect_detaching_rods`) | `done` |
+| S11a | `11a-line-physics-and-drag` | hallita siiman kireyttä ja kelan jarrua (`Z`/`X`): jarru luistaa suojaten siimaa, ylikiristys/puolan tyhjeneminen/hankauma katkaisee (`TANGLED`), löysä siima päästää kalan | `LinePhysics` + `RodState`-jännitys/jarru (`PlayerInput.drag_input`) | `draft` |
+| S11b | `11b-line-visuals-and-rod-bend` | nähdä siiman virtauskaaren (löysä vs. kireä, värinä/varoitusväri), vavan taipuman ja visuaalisen kireys-/jarrumittarin HUDissa | Jännitysreaktiivinen 3D-siimakäyrä ja vavan taipuma (`src/view/`) | `draft` |
+| S11c | `11c-fish-fatigue` | väsyttää isoja kaloja aktiivisesti oikealla rytmillä ja jarrulla ennen haavitusta | Kalan syvempi väsytysmalli (`stamina`-silmukka) | `draft` |
 | S12 | `12-trolling-window-and-tangles` | pitää vauhdin uisteluikkunassa, kokea siimasotkut (pysähdys tai jyrkkä käännös) ja selvittää solmun kannella | Siimasotkutila (uisteluikkuna laukaisimena) | `draft` |
 | S13 | `13-rod-threading` | pujottaa tärppivavan ulommaiseksi (`-1 → -3`) kaverin siirtäessä vapoja tieltä; sisäpaikalta kelaaminen sotkee siimat | Siimojen risteämisen tunnistus | `draft` |
 | S14 | `14-waves-and-buoyancy` | ajaa aallokossa, jossa vene keikkuu ja kallistuu | Deterministinen `WaveField` (4 pisteen kellunta) | `draft` |
@@ -54,5 +60,6 @@
 | :--- | :--- | :--- |
 | **S12** | Uistelukaasu | `BoatSimulator`-kaasukäyrän matala pää ja uisteluikkunan rajat kalibroidaan samassa viipaleessa. |
 | **S14** | Aallokko | `WaveField` (`src/core/`) tarjoaa `get_wave_height(x, z, time)` ja 4 pisteen kellunnan (`y`, `pitch`, `roll`). |
+| **S16** | Shokkikuorma | Äkillinen karikkoshokki (`SNAGGED`) kovalla vauhdilla/jarrulla lisätään esteviipaleessa (ks. [`line-physics.md`](02-mechanics/line-physics.md)). |
 | **S21** | Ruorin visuaalit | Vauhtisauva seuraa `throttle`-arvoa, ohjauspyörä `steering_angle`-kulmaa. |
 | **S22** | Palaute | Vavan taipuma, räikkä-/tärppiääni, kireysväri ja roiskahdus haavituksessa. |
