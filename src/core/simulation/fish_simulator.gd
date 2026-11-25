@@ -497,6 +497,7 @@ func step(state: GameState, inputs: Dictionary, rod_sim: RodSimulator = null, de
 			state.fish_notice_text = ""
 
 	var scooping_rods := _collect_scooping_rods(state, inputs)
+	var detaching_rods := _collect_detaching_rods(state, inputs)
 
 	var fish_ids: Array[String] = []
 	for fid in state.fishes.keys():
@@ -513,7 +514,7 @@ func step(state: GameState, inputs: Dictionary, rod_sim: RodSimulator = null, de
 		if fish.state == FishState.STATE_READY_TO_LAND:
 			_step_ready_to_land(state, inputs, item, rod, fish, helper_rod_sim, delta, scooping_rods.has(fid))
 		else:
-			_step_hooked_fish(state, inputs, item, rod, fish, helper_rod_sim, delta)
+			_step_hooked_fish(state, inputs, item, rod, fish, helper_rod_sim, delta, detaching_rods.has(fid))
 
 	if state.boat.forward_speed >= config.min_bite_boat_speed:
 		_roll_automatic_bites(state, helper_rod_sim, delta)
@@ -610,12 +611,13 @@ func _step_hooked_fish(
 	rod: RodState,
 	fish: FishState,
 	rod_sim: RodSimulator,
-	delta: float
+	delta: float,
+	has_detacher: bool = false
 ) -> void:
 	var spec := get_species_spec(fish.species)
 	var is_reeling := _is_player_reeling_rod(state, inputs, item)
 	var ready_for_detach := is_rod_ready_for_planer_detach(rod, fish, config.detach_window_distance)
-	var is_detaching := ready_for_detach and _is_any_player_detaching_rod(state, inputs, fish.rod_id)
+	var is_detaching := ready_for_detach and has_detacher
 	fish.hooked_time += delta
 	fish.unattended_time = 0.0 if (is_reeling or is_detaching) else (fish.unattended_time + delta)
 
@@ -909,6 +911,24 @@ func _is_interact_held(raw_input: Variant) -> bool:
 	if raw_input is Dictionary:
 		return bool((raw_input as Dictionary).get("interact_held", false))
 	return false
+
+
+func _collect_detaching_rods(state: GameState, inputs: Dictionary) -> Dictionary:
+	var detaching: Dictionary = {}
+	var pids: Array[int] = []
+	for pid_raw in inputs.keys():
+		var pid := int(pid_raw)
+		if pid != 0 and not pids.has(pid):
+			pids.append(pid)
+	pids.sort()
+	for pid in pids:
+		if not _is_interact_held(_get_player_input(inputs, pid)):
+			continue
+		var target := find_detach_target_for_player(state, pid, config.detach_window_distance, config.coop_detach_radius)
+		var rid := str(target.get("rod_id", ""))
+		if not rid.is_empty():
+			detaching[rid] = true
+	return detaching
 
 
 func _is_any_player_detaching_rod(state: GameState, inputs: Dictionary, rod_id: String) -> bool:

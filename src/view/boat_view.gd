@@ -10,6 +10,8 @@ var _holder_meta: Dictionary = {}
 var _holder_rod_views: Dictionary = {}
 var _deck_item_views: Dictionary = {}
 var _configured_layout_sig: String = ""
+var _configured_cfg: ItemConfig = null
+var layout_rebuild_count: int = 0
 var _holder_socket_mesh: CylinderMesh
 var _rod_shaft_mesh: CylinderMesh
 var _rod_tip_meshes: Array[CylinderMesh] = []
@@ -126,22 +128,40 @@ func _make_box(box_size: Vector3, pos: Vector3, mat: StandardMaterial3D) -> Mesh
 	return mesh_instance
 
 
-func apply_state(boat: BoatState) -> void:
+var _target_pitch: float = 0.0
+var _target_roll: float = 0.0
+
+
+func apply_state(boat: BoatState, step_tilt: bool = true) -> void:
 	position = boat.world_position
-	var target_pitch := clampf(boat.throttle * 0.05 + boat.forward_speed * 0.004, -0.04, 0.08)
-	var target_roll := clampf(boat.angular_velocity * boat.forward_speed * 0.02, -0.15, 0.15)
-	_current_pitch = lerpf(_current_pitch, target_pitch, 0.1)
-	_current_roll = lerpf(_current_roll, target_roll, 0.1)
+	_target_pitch = clampf(boat.throttle * 0.05 + boat.forward_speed * 0.004, -0.04, 0.08)
+	_target_roll = clampf(boat.angular_velocity * boat.forward_speed * 0.02, -0.15, 0.15)
+	if step_tilt:
+		_current_pitch = lerpf(_current_pitch, _target_pitch, 0.1)
+		_current_roll = lerpf(_current_roll, _target_roll, 0.1)
 	rotation = Vector3(_current_pitch, boat.heading, _current_roll)
+
+
+func apply_frame(pos: Vector3, heading: float, delta: float = 1.0 / 60.0) -> void:
+	position = pos
+	var factor := 1.0 - pow(1.0 - 0.1, maxf(0.0, delta) * 60.0)
+	_current_pitch = lerpf(_current_pitch, _target_pitch, factor)
+	_current_roll = lerpf(_current_roll, _target_roll, factor)
+	rotation = Vector3(_current_pitch, heading, _current_roll)
 
 
 func configure_holders(item_config: ItemConfig) -> void:
 	if item_config == null:
 		return
+	if item_config == _configured_cfg:
+		return
 	var sig := item_config.get_layout_signature()
 	if sig == _configured_layout_sig:
+		_configured_cfg = item_config
 		return
 	_configured_layout_sig = sig
+	_configured_cfg = item_config
+	layout_rebuild_count += 1
 	_holder_meta.clear()
 	_holder_rod_views.clear()
 	_free_children_safe(holder_rods_container)
@@ -165,6 +185,20 @@ func configure_holders(item_config: ItemConfig) -> void:
 			"side": side,
 			"rotation_degrees": tilt_deg,
 		}
+
+
+func get_visual_rod_tip_world(item: HeldItem, fallback_state: GameState = null) -> Vector3:
+	if item != null:
+		if item.is_carried() and _player_views.has(item.carrier_peer_id):
+			var pv := _player_views[item.carrier_peer_id] as PlayerView
+			if pv != null:
+				return transform * (pv.transform * pv.get_held_rod_tip_local_to_player())
+		elif not item.is_carried() and _holder_rod_views.has(item.id):
+			var rod_node := _holder_rod_views[item.id] as Node3D
+			if rod_node != null:
+				return transform * (rod_node.transform * RodSimulator.RESTING_TIP_LOCAL_OFFSET)
+	var helper := RodSimulator.new()
+	return helper.get_rod_tip_world(fallback_state, item)
 
 
 func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dictionary = {}) -> void:

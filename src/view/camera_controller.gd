@@ -92,17 +92,18 @@ func apply_zoom(zoom_delta: float) -> void:
 	target_dist = clampf(target_dist - zoom_delta * ZOOM_STEP, DECK_MIN_DIST, DECK_MAX_DIST)
 
 
-func step(snap: bool = false) -> void:
+func step(snap: bool = false, delta: float = 1.0 / 60.0) -> void:
 	if snap:
 		current_yaw = target_yaw
 		current_pitch = target_pitch
 		current_dist = target_dist
 		current_pivot = target_pivot
 		return
-	current_yaw = wrapf(lerp_angle(current_yaw, target_yaw, SMOOTH_FACTOR), -PI, PI)
-	current_pitch = lerpf(current_pitch, target_pitch, SMOOTH_FACTOR)
-	current_dist = lerpf(current_dist, target_dist, SMOOTH_FACTOR)
-	current_pivot = current_pivot.lerp(target_pivot, SMOOTH_FACTOR)
+	var factor := 1.0 - pow(1.0 - SMOOTH_FACTOR, maxf(0.0, delta) * 60.0)
+	current_yaw = wrapf(lerp_angle(current_yaw, target_yaw, factor), -PI, PI)
+	current_pitch = lerpf(current_pitch, target_pitch, factor)
+	current_dist = lerpf(current_dist, target_dist, factor)
+	current_pivot = current_pivot.lerp(target_pivot, factor)
 
 
 func compute_camera_transform(boat_world_pos: Vector3, boat_heading: float) -> Dictionary:

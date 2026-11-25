@@ -16,6 +16,9 @@ const DEFAULT_STERN_Z: float = 3.45
 var rod_count: int = DEFAULT_ROD_COUNT
 var net_count: int = DEFAULT_NET_COUNT
 var holders: Array[Dictionary] = []
+var _holder_index: Dictionary = {}
+var _index_size: int = -1
+var _indexed_holders: Array = []
 
 
 func _init(custom_holders: Array = [], custom_rod_count: int = DEFAULT_ROD_COUNT, custom_net_count: int = -1) -> void:
@@ -66,11 +69,24 @@ static func create_default_config(custom_rod_count: int = DEFAULT_ROD_COUNT, cus
 	return ItemConfig.new(create_default_rod_holders(), custom_rod_count, custom_net_count)
 
 
+func _ensure_index() -> void:
+	if not is_same(_indexed_holders, holders) or _index_size != holders.size() or (_holder_index.is_empty() and not holders.is_empty()):
+		_holder_index.clear()
+		for i in range(holders.size()):
+			var h := holders[i]
+			if not h.has("tip_local_position"):
+				h = _normalize_holder(h)
+				holders[i] = h
+			var hid := str(h.get("id", ""))
+			if not hid.is_empty() and not _holder_index.has(hid):
+				_holder_index[hid] = h
+		_index_size = holders.size()
+		_indexed_holders = holders
+
+
 func get_holder(holder_id: String) -> Dictionary:
-	for h in holders:
-		if str(h.get("id", "")) == holder_id:
-			return h
-	return {}
+	_ensure_index()
+	return _holder_index.get(holder_id, {}) as Dictionary
 
 
 func has_holder(holder_id: String) -> bool:
@@ -206,12 +222,16 @@ func _normalize_holder(raw: Dictionary) -> Dictionary:
 	if allowed_types.is_empty():
 		allowed_types.append(ITEM_TYPE_ROD)
 
+	var tilt_rad := Vector3(deg_to_rad(tilt.x), deg_to_rad(tilt.y), deg_to_rad(tilt.z))
+	var tip_local := pos + Basis.from_euler(tilt_rad) * Vector3(0.0, 1.69, 0.0)
+
 	var out := {
 		"id": hid,
 		"label": label,
 		"side": side,
 		"local_position": pos,
 		"tilt_degrees": tilt,
+		"tip_local_position": tip_local,
 		"radius": radius,
 		"allowed_types": allowed_types,
 		"spread_angle_deg": spread_angle_deg,

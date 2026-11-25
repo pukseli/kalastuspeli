@@ -13,6 +13,9 @@ var fish_simulator: FishSimulator = FishSimulator.new()
 var env_config: EnvConfig = EnvConfig.new()
 var network_manager: NetworkManager
 var world_view: WorldView
+var render_interpolator: RenderInterpolator = RenderInterpolator.new()
+var _display_state: GameState = null
+var _view_tick_dirty: bool = false
 var _rmb_dragging: bool = false
 var _quitting: bool = false
 
@@ -30,6 +33,7 @@ func _ready() -> void:
 	item_simulator = ItemSimulator.new(item_config)
 	game_state.configure_items(item_config)
 	render_state.configure_items(item_config)
+	network_manager.interpolator.item_config = item_config
 	network_manager.game_snapshot_received.connect(_on_game_snapshot_received)
 	network_manager.start_session()
 
@@ -39,6 +43,8 @@ func _ready() -> void:
 	world_view.debug_hud_enabled = env_config.debug_hud
 	world_view.camera_controller.set_control_scheme(CameraController.parse_control_scheme_from_args(cli_args))
 	world_view.apply_game_state(game_state, network_manager.get_status_text(), network_manager.get_local_peer_id(), true)
+	_display_state = game_state
+	render_interpolator.capture(game_state)
 
 
 static func is_quit_shortcut(event: InputEvent, alt_held: bool = false) -> bool:
@@ -138,12 +144,30 @@ func _physics_process(_delta: float) -> void:
 	if not network_manager.is_authority() and network_manager.interpolation_enabled:
 		if network_manager.interpolator.step(render_state, BoatSimulator.FIXED_DELTA):
 			display_state = render_state
-	world_view.apply_game_state(display_state, network_manager.get_status_text(), network_manager.get_local_peer_id())
+	_display_state = display_state
+	render_interpolator.capture(display_state)
+	_view_tick_dirty = true
+
+
+func _process(delta: float) -> void:
+	if world_view == null:
+		return
+	var active_state := _display_state if _display_state != null else game_state
+	if _view_tick_dirty:
+		_view_tick_dirty = false
+		world_view.apply_game_state(active_state, network_manager.get_status_text(), network_manager.get_local_peer_id(), false, false)
+	var fraction := clampf(Engine.get_physics_interpolation_fraction(), 0.0, 1.0)
+	var blend := render_interpolator.blend(fraction)
+	world_view.update_frame(blend, delta, active_state)
 
 
 func _on_game_snapshot_received(snapshot: Dictionary) -> void:
-	network_manager.apply_game_snapshot(game_state, snapshot)
-	network_manager.interpolator.push_snapshot(snapshot)
+	if network_manager.interpolator.push_snapshot(snapshot):
+		var latest := network_manager.interpolator.get_latest_state()
+		if latest != null:
+			game_state = latest
+	else:
+		network_manager.apply_game_snapshot(game_state, snapshot)
 
 
 func _read_local_input() -> void:

@@ -280,11 +280,11 @@ func receive_incoming_game_snapshot(snapshot: Dictionary) -> void:
 	if is_authority() or snapshot.is_empty():
 		return
 	var delay := _compute_one_way_delay_sec()
-	if delay <= 0.0:
+	if delay <= 0.0 and _incoming_snapshot_queue.is_empty():
 		game_snapshot_received.emit(snapshot)
 		return
 	_incoming_snapshot_queue.append({
-		"deliver_at": _sim_clock_sec + delay,
+		"deliver_at": _sim_clock_sec + maxf(delay, 0.0),
 		"seq": _next_packet_seq(),
 		"snapshot": snapshot,
 	})
@@ -400,6 +400,8 @@ func step_game_tick(
 		game_state.tick += 1
 		_tick_counter += 1
 		if _tick_counter % get_snapshot_interval_ticks() == 0:
+			if mode == "offline":
+				return {}
 			var snapshot := game_state.to_dict()
 			if mode == "host" and _has_active_peer():
 				rpc_sync_game_state.rpc(snapshot)
@@ -418,10 +420,12 @@ func apply_remote_snapshot(boat_state: BoatState, snapshot: Dictionary) -> void:
 
 
 func apply_game_snapshot(game_state: GameState, snapshot: Dictionary) -> void:
-	if is_authority():
+	if is_authority() or snapshot.is_empty():
 		return
-	if not snapshot.is_empty():
-		game_state.from_dict(snapshot)
+	var incoming_tick := int(snapshot.get("tick", 0))
+	if game_state.tick > 0 and incoming_tick > 0 and incoming_tick < game_state.tick:
+		return
+	game_state.from_dict(snapshot)
 
 
 func get_status_text() -> String:
@@ -641,6 +645,8 @@ func _step_client_tick(local_input: PlayerInput) -> void:
 
 
 func _pop_due_items(queue: Array[Dictionary]) -> Array[Dictionary]:
+	if queue.is_empty():
+		return []
 	var ready: Array[Dictionary] = []
 	var remaining: Array[Dictionary] = []
 	var cutoff := _sim_clock_sec + 0.0001

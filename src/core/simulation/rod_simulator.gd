@@ -200,7 +200,7 @@ func _step_single_rod(state: GameState, item: HeldItem, rod: RodState, delta: fl
 		rod.planer.reset_strike_reaction()
 		rod.trail_factor = 0.0
 		rod.trail_angle = 0.0
-		if not item.is_carried() and not holder_cfg.is_empty():
+		if not holder_cfg.is_empty():
 			rod.planer.attached = bool(holder_cfg.get("default_planer_attached", false))
 		return
 
@@ -442,6 +442,8 @@ func get_rod_tip_local(state: GameState, item: HeldItem) -> Vector3:
 
 	var holder_cfg := _get_rod_holder_cfg(state, item)
 	if not holder_cfg.is_empty():
+		if holder_cfg.has("tip_local_position"):
+			return holder_cfg["tip_local_position"] as Vector3
 		var h_pos: Vector3 = holder_cfg.get("local_position", Vector3.ZERO)
 		var tilt: Vector3 = holder_cfg.get("tilt_degrees", Vector3.ZERO)
 		var tilt_rad := Vector3(deg_to_rad(tilt.x), deg_to_rad(tilt.y), deg_to_rad(tilt.z))

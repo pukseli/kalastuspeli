@@ -41,6 +41,14 @@ var _raikka_player: AudioStreamPlayer
 var _raikka_cooldown: float = 0.0
 var _rod_simulator_helper: RodSimulator = RodSimulator.new()
 var _fish_simulator_helper: FishSimulator = FishSimulator.new()
+var _tick_boat_pos: Vector3 = Vector3.ZERO
+var _tick_boat_heading: float = 0.0
+var material_assign_count: int = 0
+var _planer_parts: Dictionary = {}
+var _fish_parts: Dictionary = {}
+var _fish_species_cache: Dictionary = {}
+var _line_start_world: Dictionary = {}
+var _last_in_helm: bool = false
 
 
 func _init() -> void:
@@ -273,17 +281,23 @@ func apply_state(boat: BoatState, net_info: String = "") -> void:
 	_update_camera_and_hud(boat, "", false, false, "—")
 
 
-func apply_game_state(game_state: GameState, net_info: String = "", local_peer_id: int = 1, snap_camera: bool = false) -> void:
+func apply_game_state(game_state: GameState, net_info: String = "", local_peer_id: int = 1, snap_camera: bool = false, step_frame: bool = true) -> void:
 	if not net_info.is_empty():
 		net_status_text = net_info
-	boat_view.apply_state(game_state.boat)
+	_tick_boat_pos = game_state.boat.world_position
+	_tick_boat_heading = game_state.boat.heading
+	if trolling_lines_container != null:
+		trolling_lines_container.transform = Transform3D.IDENTITY
+	boat_view.apply_state(game_state.boat, step_frame)
 	boat_view.apply_items(game_state.items, game_state.item_config, game_state.fishes)
 	boat_view.apply_players(game_state.players, game_state.items, game_state.fishes)
 	_apply_trolling_rods(game_state)
-	_step_raikka_audio(game_state)
+	if step_frame:
+		_step_raikka_audio(game_state, 1.0 / 60.0)
 
 	var active_station := game_state.get_player_station(local_peer_id) if local_peer_id != 0 else ""
 	var is_in_helm := (active_station == StationConfig.HELM_STATION_ID)
+	_last_in_helm = is_in_helm
 	var held_item := game_state.get_player_held_item(local_peer_id) if local_peer_id != 0 else null
 	var held_label := _format_held_item_label(held_item)
 	var prompt := ""
@@ -510,7 +524,8 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 		game_state.get_deployed_rod_count(),
 		game_state.rods.size(),
 		fish_alert,
-		catch_hud
+		catch_hud,
+		step_frame
 	)
 
 
@@ -544,13 +559,15 @@ func _update_camera_and_hud(
 	deployed_rods: int = 0,
 	total_rods: int = 0,
 	fish_alert: String = "",
-	catch_hud: String = "Saalis: 0 kpl"
+	catch_hud: String = "Saalis: 0 kpl",
+	step_frame: bool = true
 ) -> void:
 	camera_controller.set_mode(in_helm, snap_camera)
-	camera_controller.step(snap_camera)
-	var cam_xform := camera_controller.compute_camera_transform(boat.world_position, boat.heading)
-	camera.position = cam_xform["position"]
-	camera.rotation = cam_xform["rotation"]
+	if step_frame or snap_camera:
+		camera_controller.step(snap_camera, 1.0 / 60.0)
+		var cam_xform := camera_controller.compute_camera_transform(boat.world_position, boat.heading)
+		camera.position = cam_xform["position"]
+		camera.rotation = cam_xform["rotation"]
 
 	var control_mode := camera_controller.get_control_mode_hud_text(in_helm, held_label)
 	var lines_hud := "Vedessä: %d/%d" % [deployed_rods, total_rods]
@@ -615,9 +632,29 @@ func _build_fish_alert_text(game_state: GameState) -> String:
 	return "TÄRPPI! %s%s" % [", ".join(tripped_labels), drag_suffix]
 
 
-func _step_raikka_audio(game_state: GameState) -> void:
-	if _raikka_player == null or not is_inside_tree():
-		return
+func update_frame(blend: Dictionary, delta: float, game_state: GameState = null) -> void:
+	var b_pos: Vector3 = blend.get("boat_pos", _tick_boat_pos)
+	var b_head: float = float(blend.get("boat_heading", _tick_boat_heading))
+	boat_view.apply_frame(b_pos, b_head, delta)
+	var players_blend: Variant = blend.get("players", {})
+	if players_blend is Dictionary:
+		for pid in (players_blend as Dictionary):
+			var pv := boat_view.get_player_view(int(pid))
+			if pv != null:
+				pv.position = (players_blend as Dictionary)[pid]
+	if trolling_lines_container != null:
+		var tick_xform := Transform3D(Basis(Vector3.UP, _tick_boat_heading), _tick_boat_pos)
+		var blend_xform := Transform3D(Basis(Vector3.UP, b_head), b_pos)
+		trolling_lines_container.transform = blend_xform * tick_xform.affine_inverse()
+	camera_controller.step(false, delta)
+	var cam_xform := camera_controller.compute_camera_transform(b_pos, b_head)
+	camera.position = cam_xform["position"]
+	camera.rotation = cam_xform["rotation"]
+	if game_state != null:
+		_step_raikka_audio(game_state, delta)
+
+
+func _step_raikka_audio(game_state: GameState, delta: float = 1.0 / 60.0) -> void:
 	var max_drag := 0.0
 	for fid in game_state.fishes:
 		var fish: FishState = game_state.fishes[fid]
@@ -626,17 +663,30 @@ func _step_raikka_audio(game_state: GameState) -> void:
 	if max_drag <= 0.01:
 		_raikka_cooldown = 0.0
 		return
-	_raikka_cooldown -= 1.0 / 60.0
+	_raikka_cooldown -= delta
 	if _raikka_cooldown <= 0.0:
 		var interval := clampf(0.16 - max_drag * 0.058, 0.045, 0.16)
 		_raikka_cooldown = interval
-		_raikka_player.pitch_scale = clampf(0.9 + max_drag * 0.25, 0.85, 1.5)
-		_raikka_player.play()
+		if _raikka_player != null and is_inside_tree():
+			_raikka_player.pitch_scale = clampf(0.9 + max_drag * 0.25, 0.85, 1.5)
+			_raikka_player.play()
+
+
+func _set_mat(mi: MeshInstance3D, mat: Material) -> void:
+	if mi != null and mi.material_override != mat:
+		mi.material_override = mat
+		material_assign_count += 1
+
+
+func get_line_start_world(rod_id: String) -> Vector3:
+	return _line_start_world.get(rod_id, Vector3.ZERO) as Vector3
 
 
 func _apply_trolling_rods(game_state: GameState) -> void:
 	_lines_mesh.clear_surfaces()
+	_line_start_world.clear()
 	var line_vertices: Array[Vector3] = []
+	var deployed_rods: Dictionary = {}
 	var active_planers: Dictionary = {}
 	var active_lures: Dictionary = {}
 	var active_fishes: Dictionary = {}
@@ -648,7 +698,9 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			continue
 
 		var rid_str := str(rid)
-		var tip_world := _rod_simulator_helper.get_rod_tip_world(game_state, item)
+		deployed_rods[rid_str] = true
+		var tip_world := boat_view.get_visual_rod_tip_world(item, game_state)
+		_line_start_world[rid_str] = tip_world
 		var fish := game_state.get_fish_state(rid_str)
 		var show_fish := fish != null and (fish.surfaced or fish.is_jumping())
 		var end_world := Vector3.ZERO
@@ -715,6 +767,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 		if not active_planers.has(existing_pid):
 			var stale_planer: Node3D = _planer_views[existing_pid]
 			_planer_views.erase(existing_pid)
+			_planer_parts.erase(existing_pid)
 			_free_node_safe(stale_planer)
 
 	for rid in active_planers:
@@ -728,13 +781,15 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			_planer_views[rid] = p_node
 		p_node.position = p_info["pos"]
 		p_node.rotation = Vector3(float(p_info["pitch"]), float(p_info["yaw"]), float(p_info["roll"]))
-		_update_planer_visual_state(p_node, str(p_info["state"]), float(p_info["flag_angle"]), bool(p_info.get("detach_ready", false)))
+		_update_planer_visual_state(rid, p_node, str(p_info["state"]), float(p_info["flag_angle"]), bool(p_info.get("detach_ready", false)))
 
 	for existing_lid in _lure_views.keys():
-		if not active_lures.has(existing_lid):
+		if not deployed_rods.has(existing_lid):
 			var stale_lure: Node3D = _lure_views[existing_lid]
 			_lure_views.erase(existing_lid)
 			_free_node_safe(stale_lure)
+		elif not active_lures.has(existing_lid):
+			(_lure_views[existing_lid] as Node3D).visible = false
 
 	for rid in active_lures:
 		var l_info: Dictionary = active_lures[rid]
@@ -746,15 +801,22 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			l_node.name = "Lure_%s" % rid
 			lures_container.add_child(l_node)
 			_lure_views[rid] = l_node
+		l_node.visible = true
 		l_node.position = l_info["pos"]
 		if not _lure_meshes.is_empty():
-			l_node.mesh = _lure_meshes[posmod(int(l_info["color_index"]), _lure_meshes.size())]
+			var target_mesh := _lure_meshes[posmod(int(l_info["color_index"]), _lure_meshes.size())]
+			if l_node.mesh != target_mesh:
+				l_node.mesh = target_mesh
 
 	for existing_fid in _fish_views.keys():
-		if not active_fishes.has(existing_fid):
+		if not deployed_rods.has(existing_fid) or not game_state.fishes.has(existing_fid):
 			var stale_fish: Node3D = _fish_views[existing_fid]
 			_fish_views.erase(existing_fid)
+			_fish_parts.erase(existing_fid)
+			_fish_species_cache.erase(existing_fid)
 			_free_node_safe(stale_fish)
+		elif not active_fishes.has(existing_fid):
+			(_fish_views[existing_fid] as Node3D).visible = false
 
 	for rid in active_fishes:
 		var f_info: Dictionary = active_fishes[rid]
@@ -765,6 +827,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			f_node = _create_fish_node(rid)
 			fishes_container.add_child(f_node)
 			_fish_views[rid] = f_node
+		f_node.visible = true
 		var sp := str(f_info["species"])
 		var spec := FishSimulator.get_species_spec(sp)
 		var v_len := float(spec.get("visual_length", 0.6))
@@ -772,7 +835,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 		f_node.position = f_info["pos"]
 		f_node.rotation = Vector3(float(f_info["pitch"]), float(f_info["yaw"]), 0.0)
 		f_node.scale = Vector3(v_rad * 2.0, v_rad * 2.0, v_len)
-		_update_fish_visual_species(f_node, sp)
+		_update_fish_visual_species(rid, f_node, sp)
 
 
 func _append_curved_segment(out: Array[Vector3], start_pos: Vector3, end_pos: Vector3, segments: int, max_sag: float) -> void:
@@ -798,7 +861,6 @@ func _create_planer_node(rod_id: String) -> Node3D:
 	var body := MeshInstance3D.new()
 	body.name = "Body"
 	body.mesh = _planer_body_mesh
-	body.material_override = _planer_body_mats["normal"]
 	root.add_child(body)
 
 	var flag_pivot := Node3D.new()
@@ -810,25 +872,27 @@ func _create_planer_node(rod_id: String) -> Node3D:
 	flag.name = "Flag"
 	flag.mesh = _planer_flag_mesh
 	flag.position = Vector3(0.0, 0.17, 0.0)
-	flag.material_override = _flag_mats["normal"]
 	flag_pivot.add_child(flag)
+
+	_planer_parts[rod_id] = {"body": body, "flag_pivot": flag_pivot, "flag": flag}
 	return root
 
 
-func _update_planer_visual_state(planer_node: Node3D, state_name: String, flag_angle: float = 0.0, detach_ready: bool = false) -> void:
-	var body := planer_node.get_node_or_null("Body") as MeshInstance3D
-	var flag_pivot := planer_node.get_node_or_null("FlagPivot") as Node3D
-	var flag := planer_node.get_node_or_null("FlagPivot/Flag") as MeshInstance3D
+func _update_planer_visual_state(rod_id: String, _planer_node: Node3D, state_name: String, flag_angle: float = 0.0, detach_ready: bool = false) -> void:
+	var parts := _planer_parts.get(rod_id, {}) as Dictionary
+	var body := parts.get("body", null) as MeshInstance3D
+	var flag_pivot := parts.get("flag_pivot", null) as Node3D
+	var flag := parts.get("flag", null) as MeshInstance3D
 
 	if body != null:
 		if state_name == PlanerBoard.STATE_TANGLED:
-			body.material_override = _planer_body_mats["tangled"]
+			_set_mat(body, _planer_body_mats["tangled"])
 		elif state_name == PlanerBoard.STATE_SNAGGED:
-			body.material_override = _planer_body_mats["snagged"]
+			_set_mat(body, _planer_body_mats["snagged"])
 		elif detach_ready:
-			body.material_override = _planer_body_mats["detach_ready"]
+			_set_mat(body, _planer_body_mats["detach_ready"])
 		else:
-			body.material_override = _planer_body_mats["normal"]
+			_set_mat(body, _planer_body_mats["normal"])
 
 	if flag_pivot != null and flag != null:
 		var eff_angle := flag_angle
@@ -841,11 +905,11 @@ func _update_planer_visual_state(planer_node: Node3D, state_name: String, flag_a
 				eff_angle = 0.0
 		flag_pivot.rotation_degrees = Vector3(eff_angle, 0.0, 0.0)
 		if state_name == PlanerBoard.STATE_TRIPPED or state_name == PlanerBoard.STATE_TANGLED or state_name == PlanerBoard.STATE_SNAGGED or absf(eff_angle) >= 45.0:
-			flag.material_override = _flag_mats["tripped"]
+			_set_mat(flag, _flag_mats["tripped"])
 		elif absf(eff_angle) >= 5.0:
-			flag.material_override = _flag_mats["bobbing"]
+			_set_mat(flag, _flag_mats["bobbing"])
 		else:
-			flag.material_override = _flag_mats["normal"]
+			_set_mat(flag, _flag_mats["normal"])
 
 
 func _create_fish_node(rod_id: String) -> Node3D:
@@ -877,20 +941,28 @@ func _create_fish_node(rod_id: String) -> Node3D:
 	belly.material_override = _orca_belly_mat
 	belly.visible = false
 	root.add_child(belly)
+
+	_fish_parts[rod_id] = {"body": body, "tail": tail, "dorsal": dorsal, "belly": belly}
 	return root
 
 
-func _update_fish_visual_species(fish_node: Node3D, species_id: String) -> void:
+func _update_fish_visual_species(rod_id: String, _fish_node: Node3D, species_id: String) -> void:
+	if _fish_species_cache.get(rod_id, "") == species_id:
+		return
+	_fish_species_cache[rod_id] = species_id
+	var parts := _fish_parts.get(rod_id, {}) as Dictionary
 	var mat := _fish_mats.get(species_id, _fish_mats.get(FishState.SPECIES_PERCH, null)) as StandardMaterial3D
-	for part_name in ["Body", "Tail", "Dorsal"]:
-		var part := fish_node.get_node_or_null(part_name) as MeshInstance3D
-		if part != null and mat != null:
-			part.material_override = mat
-	var tail := fish_node.get_node_or_null("Tail") as MeshInstance3D
+	var body := parts.get("body", null) as MeshInstance3D
+	var tail := parts.get("tail", null) as MeshInstance3D
+	var dorsal := parts.get("dorsal", null) as MeshInstance3D
+	var belly := parts.get("belly", null) as MeshInstance3D
+	if mat != null:
+		_set_mat(body, mat)
+		_set_mat(tail, mat)
+		_set_mat(dorsal, mat)
 	if tail != null:
 		var spec := FishSimulator.get_species_spec(species_id)
 		tail.rotation_degrees = Vector3(0.0, 0.0, 90.0 if bool(spec.get("is_whale", false)) else 0.0)
-	var belly := fish_node.get_node_or_null("BellyPatch") as MeshInstance3D
 	if belly != null:
 		belly.visible = (species_id == FishState.SPECIES_ORCA)
 

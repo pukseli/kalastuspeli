@@ -188,3 +188,9 @@ func apply_held_item(item: HeldItem, fish: FishState = null) -> void:
 
 func has_visible_held_item() -> bool:
 	return _held_item_anchor != null and _held_item_anchor.visible
+
+
+func get_held_rod_tip_local_to_player() -> Vector3:
+	if _held_item_anchor == null:
+		return RodSimulator.HELD_TIP_LOCAL_OFFSET
+	return _held_item_anchor.transform * RodSimulator.HELD_TIP_LOCAL_OFFSET

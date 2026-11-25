@@ -14,10 +14,6 @@ config/name="Kalastuspeli"
 run/main_scene="res://src/main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
-[audio]
-
-driver/driver="Dummy"
-
 [display]
 
 window/size/viewport_width=960

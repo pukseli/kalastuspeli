@@ -1,15 +1,19 @@
 class_name GameState
 extends RefCounted
 
+const CATCH_LOG_MAX: int = 20
+
 var tick: int = 0
 var boat: BoatState = BoatState.new()
 var players: Dictionary = {}
 var stations: Dictionary = StationConfig.create_default_stations()
 var item_config: ItemConfig = ItemConfig.new()
-var items: Dictionary = item_config.create_initial_items()
+var items: Dictionary = {}
 var rods: Dictionary = {}
 var fishes: Dictionary = {}
 var catches: Array = []
+var catch_count: int = 0
+var biggest_catch_kg: float = 0.0
 var fish_notice_seq: int = 0
 var fish_notice_text: String = ""
 var fish_notice_timer: float = 0.0
@@ -21,8 +25,10 @@ var helm_throttle_detent_sign: int = 0
 var helm_last_occupant: int = 0
 
 
-func _init() -> void:
-	sync_rods_with_items()
+func _init(populate_defaults: bool = true) -> void:
+	if populate_defaults:
+		items = item_config.create_initial_items()
+		sync_rods_with_items()
 
 
 func reset_helm_detents() -> void:
@@ -105,6 +111,8 @@ func configure_items(cfg: ItemConfig) -> void:
 	rods.clear()
 	fishes.clear()
 	catches.clear()
+	catch_count = 0
+	biggest_catch_kg = 0.0
 	fish_notice_seq = 0
 	fish_notice_text = ""
 	fish_notice_timer = 0.0
@@ -189,24 +197,25 @@ func set_fish_notice(text: String, duration: float = 4.5) -> void:
 
 
 func record_catch(species: String, weight_kg: float, size_class: String, method: String = "net") -> void:
+	var w := maxf(0.01, weight_kg)
 	catches.append({
 		"species": species,
-		"weight_kg": maxf(0.01, weight_kg),
+		"weight_kg": w,
 		"size_class": size_class,
 		"method": method,
 	})
+	catch_count += 1
+	biggest_catch_kg = maxf(biggest_catch_kg, w)
+	while catches.size() > CATCH_LOG_MAX:
+		catches.pop_front()
 
 
 func get_catch_count() -> int:
-	return catches.size()
+	return catch_count
 
 
 func get_biggest_catch_weight() -> float:
-	var max_w := 0.0
-	for entry in catches:
-		if entry is Dictionary:
-			max_w = maxf(max_w, float((entry as Dictionary).get("weight_kg", 0.0)))
-	return max_w
+	return biggest_catch_kg
 
 
 func get_player_held_item(peer_id: int) -> HeldItem:
@@ -291,6 +300,8 @@ func to_dict() -> Dictionary:
 		"rods": rods_dict,
 		"fishes": fishes_dict,
 		"catches": catches_arr,
+		"catch_count": catch_count,
+		"biggest_catch_kg": biggest_catch_kg,
 		"fish_notice_seq": fish_notice_seq,
 		"fish_notice_text": fish_notice_text,
 		"fish_notice_timer": fish_notice_timer,
@@ -398,7 +409,20 @@ func from_dict(data: Dictionary) -> void:
 					"size_class": str(ed.get("size_class", FishState.SIZE_SMALL)),
 					"method": str(ed.get("method", "net")),
 				})
+		while next_catches.size() > CATCH_LOG_MAX:
+			next_catches.pop_front()
 		catches = next_catches
+		var log_max := 0.0
+		for entry in catches:
+			if entry is Dictionary:
+				log_max = maxf(log_max, float((entry as Dictionary).get("weight_kg", 0.0)))
+		catch_count = maxi(int(data.get("catch_count", 0)), catches.size())
+		biggest_catch_kg = maxf(float(data.get("biggest_catch_kg", 0.0)), log_max)
+	else:
+		if data.has("catch_count"):
+			catch_count = maxi(0, int(data.get("catch_count", catch_count)))
+		if data.has("biggest_catch_kg"):
+			biggest_catch_kg = maxf(0.0, float(data.get("biggest_catch_kg", biggest_catch_kg)))
 
 	fish_notice_seq = int(data.get("fish_notice_seq", fish_notice_seq))
 	fish_notice_text = str(data.get("fish_notice_text", ""))

@@ -8,6 +8,8 @@ const STEER_MAX_SPEED: float = 1.6
 const STEER_RETURN_SPEED: float = 1.2
 const DETENT_HOLD_TIME: float = 0.25
 
+var _active_input: PlayerInput = PlayerInput.new()
+
 
 func _get_player_input(inputs: Dictionary, pid: int) -> Variant:
 	if inputs.has(pid):
@@ -26,7 +28,8 @@ func step(state: GameState, inputs: Dictionary, _delta: float = FIXED_DELTA) -> 
 			pids.append(pid)
 	pids.sort()
 
-	var occupied_at_start: Dictionary = state.stations.duplicate()
+	var occupied_at_start: Dictionary = {}
+	var occupied_snapshot_taken := false
 	var prev_helm := int(state.stations.get(StationConfig.HELM_STATION_ID, 0))
 
 	var station_ids: Array[String] = []
@@ -51,6 +54,10 @@ func step(state: GameState, inputs: Dictionary, _delta: float = FIXED_DELTA) -> 
 		if not interact_pressed:
 			continue
 
+		if not occupied_snapshot_taken:
+			occupied_at_start = state.stations.duplicate()
+			occupied_snapshot_taken = true
+
 		var current_station := state.get_player_station(pid)
 		if not current_station.is_empty():
 			state.stations[current_station] = 0
@@ -71,6 +78,8 @@ func step(state: GameState, inputs: Dictionary, _delta: float = FIXED_DELTA) -> 
 					best_dist = dist
 					best_sid = sid
 			if not best_sid.is_empty():
+				if _has_higher_priority_interaction(state, pid, player.local_position, best_dist):
+					continue
 				state.stations[best_sid] = pid
 				player.local_position = StationConfig.get_station_position(best_sid)
 
@@ -182,14 +191,40 @@ func _step_detent_axis(
 	return [clampf(next_value, -max_abs, max_abs), 0.0, 0]
 
 
+func _has_higher_priority_interaction(
+	state: GameState,
+	pid: int,
+	player_pos: Vector3,
+	station_dist: float
+) -> bool:
+	var detach_target := FishSimulator.find_detach_target_for_player(state, pid)
+	if not detach_target.is_empty() and float(detach_target.get("distance", INF)) < station_dist:
+		return true
+	var deck_target := ItemSimulator.find_nearest_deck_item(state, player_pos)
+	if not deck_target.is_empty() and float(deck_target.get("distance", INF)) <= station_dist:
+		return true
+	if state.item_config != null:
+		for h in state.item_config.holders:
+			var hid := str(h.get("id", ""))
+			if hid.is_empty() or state.get_holder_item(hid) == null:
+				continue
+			var h_pos: Vector3 = h.get("local_position", Vector3.ZERO)
+			var radius := float(h.get("radius", ItemConfig.DEFAULT_HOLDER_RADIUS))
+			var dx := player_pos.x - h_pos.x
+			var dz := player_pos.z - h_pos.z
+			var dist := sqrt(dx * dx + dz * dz)
+			if dist <= radius and dist < station_dist:
+				return true
+	return false
+
+
 func get_active_boat_input(
 	state: GameState,
 	max_steering_angle: float = BoatSimulator.DEFAULT_MAX_STEERING_ANGLE
 ) -> PlayerInput:
-	var active_input := PlayerInput.new()
-	active_input.throttle = state.boat.throttle
+	_active_input.throttle = state.boat.throttle
 	if max_steering_angle > 0.0001:
-		active_input.steering = clampf(state.boat.steering_angle / max_steering_angle, -1.0, 1.0)
+		_active_input.steering = clampf(state.boat.steering_angle / max_steering_angle, -1.0, 1.0)
 	else:
-		active_input.steering = 0.0
-	return active_input
+		_active_input.steering = 0.0
+	return _active_input

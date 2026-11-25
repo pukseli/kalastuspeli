@@ -84,25 +84,29 @@ static func compute_size_class(
 	return SIZE_MONSTER
 
 
+func copy_from(other: FishState) -> void:
+	rod_id = other.rod_id
+	species = other.species
+	weight_kg = other.weight_kg
+	size_class = other.size_class
+	state = other.state
+	stamina = other.stamina
+	drag_rate = other.drag_rate
+	surge_timer = other.surge_timer
+	surge_cooldown = other.surge_cooldown
+	jump_progress = other.jump_progress
+	lift_progress = other.lift_progress
+	scoop_progress = other.scoop_progress
+	detach_progress = other.detach_progress
+	hooked_time = other.hooked_time
+	unattended_time = other.unattended_time
+	surfaced = other.surfaced
+	fight_phase = other.fight_phase
+
+
 func clone() -> FishState:
 	var copy := FishState.new()
-	copy.rod_id = rod_id
-	copy.species = species
-	copy.weight_kg = weight_kg
-	copy.size_class = size_class
-	copy.state = state
-	copy.stamina = stamina
-	copy.drag_rate = drag_rate
-	copy.surge_timer = surge_timer
-	copy.surge_cooldown = surge_cooldown
-	copy.jump_progress = jump_progress
-	copy.lift_progress = lift_progress
-	copy.scoop_progress = scoop_progress
-	copy.detach_progress = detach_progress
-	copy.hooked_time = hooked_time
-	copy.unattended_time = unattended_time
-	copy.surfaced = surfaced
-	copy.fight_phase = fight_phase
+	copy.copy_from(self)
 	return copy
 
 

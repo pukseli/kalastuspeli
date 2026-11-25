@@ -52,19 +52,23 @@ func is_active_trolling() -> bool:
 	)
 
 
+func copy_from(other: PlanerBoard) -> void:
+	side = other.side
+	attached = other.attached
+	lateral_offset = other.lateral_offset
+	line_out = other.line_out
+	state = other.state
+	snag_world_position = other.snag_world_position
+	pull_back_offset = other.pull_back_offset
+	submersion = other.submersion
+	flag_angle = other.flag_angle
+	shake_intensity = other.shake_intensity
+	inward_drift_force = other.inward_drift_force
+
+
 func clone() -> PlanerBoard:
 	var copy := PlanerBoard.new()
-	copy.side = side
-	copy.attached = attached
-	copy.lateral_offset = lateral_offset
-	copy.line_out = line_out
-	copy.state = state
-	copy.snag_world_position = snag_world_position
-	copy.pull_back_offset = pull_back_offset
-	copy.submersion = submersion
-	copy.flag_angle = flag_angle
-	copy.shake_intensity = shake_intensity
-	copy.inward_drift_force = inward_drift_force
+	copy.copy_from(self)
 	return copy
 
 

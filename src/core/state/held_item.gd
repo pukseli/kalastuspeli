@@ -19,15 +19,19 @@ func is_on_deck() -> bool:
 	return carrier_peer_id == 0 and holder_id.is_empty()
 
 
+func copy_from(other: HeldItem) -> void:
+	id = other.id
+	item_type = other.item_type
+	color_index = other.color_index
+	carrier_peer_id = other.carrier_peer_id
+	holder_id = other.holder_id
+	last_holder_id = other.last_holder_id
+	deck_position = other.deck_position
+
+
 func clone() -> HeldItem:
 	var copy := HeldItem.new()
-	copy.id = id
-	copy.item_type = item_type
-	copy.color_index = color_index
-	copy.carrier_peer_id = carrier_peer_id
-	copy.holder_id = holder_id
-	copy.last_holder_id = last_holder_id
-	copy.deck_position = deck_position
+	copy.copy_from(self)
 	return copy
 
 
