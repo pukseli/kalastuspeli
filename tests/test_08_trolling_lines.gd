@@ -12,6 +12,9 @@ func test_deploy_reel_at_holder_and_in_hand_and_carry_preserves_line() -> void:
 	assert_eq(state.rods.size(), 6, "All 6 initial rods should have RodState entries")
 	assert_eq(state.get_deployed_rod_count(), 0, "All rods start stowed at 0.0 m")
 	for item_id in state.items:
+		var item: HeldItem = state.items[item_id]
+		if item == null or item.item_type != ItemConfig.ITEM_TYPE_ROD:
+			continue
 		var r := state.get_rod_state(str(item_id))
 		assert_true(r != null, "RodState exists for %s" % str(item_id))
 		assert_almost_eq(r.planer.line_out, 0.0, 0.001, "Initial line_out is 0.0")

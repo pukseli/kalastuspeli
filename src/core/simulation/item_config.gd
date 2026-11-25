@@ -3,7 +3,10 @@ extends RefCounted
 ## Configurable item holder layout and initial rod count per boat configuration.
 
 const ITEM_TYPE_ROD: String = "rod"
+const ITEM_TYPE_NET: String = "net"
 const DEFAULT_ROD_COUNT: int = 6
+const DEFAULT_NET_COUNT: int = 1
+const DEFAULT_NET_DECK_POS: Vector3 = Vector3(0.0, 0.25, 0.6)
 const DEFAULT_HOLDER_RADIUS: float = 0.85
 const HOLDER_MOUNT_Y: float = 0.65
 const DEFAULT_SIDE_X: float = 1.55
@@ -11,10 +14,11 @@ const DEFAULT_STERN_X: float = 0.95
 const DEFAULT_STERN_Z: float = 3.45
 
 var rod_count: int = DEFAULT_ROD_COUNT
+var net_count: int = DEFAULT_NET_COUNT
 var holders: Array[Dictionary] = []
 
 
-func _init(custom_holders: Array = [], custom_rod_count: int = DEFAULT_ROD_COUNT) -> void:
+func _init(custom_holders: Array = [], custom_rod_count: int = DEFAULT_ROD_COUNT, custom_net_count: int = -1) -> void:
 	var source_holders: Array = create_default_rod_holders() if custom_holders.is_empty() else custom_holders
 	holders.clear()
 	for raw_entry in source_holders:
@@ -26,6 +30,10 @@ func _init(custom_holders: Array = [], custom_rod_count: int = DEFAULT_ROD_COUNT
 
 	var compatible_count := get_compatible_holders(ITEM_TYPE_ROD).size()
 	rod_count = clampi(custom_rod_count, 0, compatible_count)
+	if custom_net_count >= 0:
+		net_count = custom_net_count
+	else:
+		net_count = DEFAULT_NET_COUNT if custom_holders.is_empty() else 0
 
 
 static func create_default_rod_holders() -> Array[Dictionary]:
@@ -54,8 +62,8 @@ static func create_default_rod_holders() -> Array[Dictionary]:
 	return result
 
 
-static func create_default_config(custom_rod_count: int = DEFAULT_ROD_COUNT) -> ItemConfig:
-	return ItemConfig.new(create_default_rod_holders(), custom_rod_count)
+static func create_default_config(custom_rod_count: int = DEFAULT_ROD_COUNT, custom_net_count: int = 0) -> ItemConfig:
+	return ItemConfig.new(create_default_rod_holders(), custom_rod_count, custom_net_count)
 
 
 func get_holder(holder_id: String) -> Dictionary:
@@ -147,6 +155,20 @@ func create_initial_items() -> Dictionary:
 		item.holder_id = target_holder_id
 		item.last_holder_id = target_holder_id
 		result[item.id] = item
+	for i in range(net_count):
+		var net_item := HeldItem.new()
+		net_item.id = "net_%d" % (i + 1)
+		net_item.item_type = ITEM_TYPE_NET
+		net_item.color_index = i
+		net_item.carrier_peer_id = 0
+		net_item.holder_id = ""
+		net_item.last_holder_id = ""
+		net_item.deck_position = Vector3(
+			DEFAULT_NET_DECK_POS.x + float(i) * 0.35,
+			DEFAULT_NET_DECK_POS.y,
+			DEFAULT_NET_DECK_POS.z
+		)
+		result[net_item.id] = net_item
 	return result
 
 

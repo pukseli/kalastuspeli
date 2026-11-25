@@ -49,6 +49,7 @@ var surge_timer: float = 0.0
 var surge_cooldown: float = 2.0
 var jump_progress: float = 0.0
 var lift_progress: float = 0.0
+var scoop_progress: float = 0.0
 var detach_progress: float = 0.0
 var hooked_time: float = 0.0
 var unattended_time: float = 0.0
@@ -96,6 +97,7 @@ func clone() -> FishState:
 	copy.surge_cooldown = surge_cooldown
 	copy.jump_progress = jump_progress
 	copy.lift_progress = lift_progress
+	copy.scoop_progress = scoop_progress
 	copy.detach_progress = detach_progress
 	copy.hooked_time = hooked_time
 	copy.unattended_time = unattended_time
@@ -117,6 +119,7 @@ func to_dict() -> Dictionary:
 		"surge_cooldown": surge_cooldown,
 		"jump_progress": jump_progress,
 		"lift_progress": lift_progress,
+		"scoop_progress": scoop_progress,
 		"detach_progress": detach_progress,
 		"hooked_time": hooked_time,
 		"unattended_time": unattended_time,
@@ -140,6 +143,7 @@ func from_dict(data: Dictionary) -> void:
 	surge_cooldown = maxf(0.0, float(data.get("surge_cooldown", 2.0)))
 	jump_progress = clampf(float(data.get("jump_progress", 0.0)), 0.0, 1.0)
 	lift_progress = clampf(float(data.get("lift_progress", 0.0)), 0.0, 1.0)
+	scoop_progress = clampf(float(data.get("scoop_progress", 0.0)), 0.0, 1.0)
 	detach_progress = clampf(float(data.get("detach_progress", 0.0)), 0.0, 1.0)
 	hooked_time = maxf(0.0, float(data.get("hooked_time", 0.0)))
 	unattended_time = maxf(0.0, float(data.get("unattended_time", 0.0)))

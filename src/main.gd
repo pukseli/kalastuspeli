@@ -26,7 +26,7 @@ func _ready() -> void:
 		cli_args = OS.get_cmdline_args()
 	env_config = EnvConfig.load_for_runtime(cli_args)
 	network_manager.configure_from_args(cli_args, env_config)
-	item_config = ItemConfig.create_default_config(network_manager.rod_count)
+	item_config = ItemConfig.create_default_config(network_manager.rod_count, ItemConfig.DEFAULT_NET_COUNT)
 	item_simulator = ItemSimulator.new(item_config)
 	game_state.configure_items(item_config)
 	render_state.configure_items(item_config)

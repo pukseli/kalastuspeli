@@ -71,8 +71,9 @@
 | `fish_notice_seq` | `int` | `0` | Juokseva ilmoitustunniste saaliille/karkauksille (lisätty S9a) |
 | `fish_notice_text` | `String` | `""` | Viimeisin kalailmoitus HUDiin (lisätty S9a) |
 | `fish_notice_timer` | `float` | `0.0` | Kalailmoituksen jäljellä oleva näyttöaika sekunteina (lisätty S9a) |
+| `catches` | `Array` | `[]` | Tiimin saalisloki: `{"species", "weight_kg", "size_class", "method"}` per kala (lisätty S10) |
 
-**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`, `configure_items(cfg: ItemConfig) -> void`, `sync_rods_with_items() -> void`, `get_rod_state(rod_id: String) -> RodState`, `get_deployed_rod_count() -> int`, `get_fish_state(rod_id: String) -> FishState`, `has_fish_on_rod(rod_id: String) -> bool`, `get_hooked_fish_count() -> int`, `set_fish_notice(text: String, duration: float = 4.5) -> void`, `get_player_held_item(peer_id: int) -> HeldItem`, `is_player_holding_item(peer_id: int) -> bool`, `get_holder_item(holder_id: String) -> HeldItem`, `return_item_to_holder(item: HeldItem) -> bool`
+**Apumetodit:** `ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState`, `remove_player(peer_id: int) -> void`, `is_player_at_station(peer_id: int) -> bool`, `get_player_station(peer_id: int) -> String`, `reset_helm_detents() -> void`, `configure_items(cfg: ItemConfig) -> void`, `sync_rods_with_items() -> void`, `get_rod_state(rod_id: String) -> RodState`, `get_deployed_rod_count() -> int`, `get_fish_state(rod_id: String) -> FishState`, `has_fish_on_rod(rod_id: String) -> bool`, `get_hooked_fish_count() -> int`, `set_fish_notice(text: String, duration: float = 4.5) -> void`, `record_catch(species: String, weight_kg: float, size_class: String, method: String = "net") -> void`, `get_catch_count() -> int`, `get_biggest_catch_weight() -> float`, `get_player_held_item(peer_id: int) -> HeldItem`, `is_player_holding_item(peer_id: int) -> bool`, `get_holder_item(holder_id: String) -> HeldItem`, `return_item_to_holder(item: HeldItem) -> bool`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
 ### Viipale S6 (`06-held-items`)
@@ -82,13 +83,14 @@
 | Kenttä | Tyyppi | Oletus | Kuvaus |
 | :--- | :--- | :--- | :--- |
 | `id` | `String` | `""` | Esineen yksilöllinen tunniste (esim. `"rod_1"`) |
-| `item_type` | `String` | `"rod"` | Esineen tyyppi (`"rod"`, laajennettavissa S10:ssä `"net"` jne.) |
+| `item_type` | `String` | `"rod"` | Esineen tyyppi (`"rod"` tai `"net"`, lisätty S10) |
 | `color_index` | `int` | `0` | Korostusväri-indeksi (`0 .. 5`) |
-| `carrier_peer_id` | `int` | `0` | Kantavan pelaajan `peer_id` (`0` = telineessä) |
-| `holder_id` | `String` | `""` | Nykyisen telineen tunniste (`""` = kädessä) |
+| `carrier_peer_id` | `int` | `0` | Kantavan pelaajan `peer_id` (`0` = telineessä tai kannella) |
+| `holder_id` | `String` | `""` | Nykyisen telineen tunniste (`""` = kädessä tai kannella) |
 | `last_holder_id` | `String` | `""` | Viimeisin teline disconnect-palautusta varten |
+| `deck_position` | `Vector3` | `Vector3.ZERO` | Kansisijainti veneen paikallisessa koordinaatistossa, kun esine lojuu kannella (lisätty S10) |
 
-**Apumetodit:** `is_carried() -> bool`, `clone() -> HeldItem`
+**Apumetodit:** `is_carried() -> bool`, `is_on_deck() -> bool`, `clone() -> HeldItem`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
 ### Viipale S8 (`08-trolling-lines`)
@@ -143,6 +145,7 @@
 | `jump_progress` | `float` | `0.0` | Pintahypyn vaihe (`0.0 .. 1.0`) |
 | `lift_progress` | `float` | `0.0` | Ilman haavia nostamisen `Space`-mittari (`0.0 .. 1.0`) |
 | `detach_progress` | `float` | `0.0` | Plaanarin irrotusmittari (`0.0 .. 1.0`, lisätty S9b) |
+| `scoop_progress` | `float` | `0.0` | Haavituksen `Space`-pitomittari (`0.0 .. 1.0`, lisätty S10) |
 | `hooked_time` | `float` | `0.0` | Koukussa oltu kokonaisaika suojajaksoa varten (`s`) |
 | `unattended_time` | `float` | `0.0` | Ilman kelausta kulunut aika (`s`) |
 | `surfaced` | `bool` | `false` | Onko kala noussut pintaan näkyviin (`<= 8.0 m`) |
@@ -153,10 +156,10 @@
 
 ---
 
-## Suunniteltu tietoskeema (tulevat viipaleet S10+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
+## Suunniteltu tietoskeema (tulevat viipaleet S11+ — ks. [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
 
-> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState`, `GameState.rods`, `FishState`, `GameState.fishes` ja `PlayerInput.interact_held` on toteutettu viipaleissa `S8–S9b`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
-> - **`S10` (`10-landing-net-and-catch`):** Haavi (`HeldItem`), kalasumppu ja tiimin saalislaskuri.
+> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState`, `GameState.rods`, `FishState`, `GameState.fishes`, `PlayerInput.interact_held`, `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` on toteutettu viipaleissa `S8–S10`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
 > - **`S11` (`11-line-tension`):** Siiman kireys (`tension`), ylikelauskatkeaminen ja `snag_tension_rate`-kireysnousu.
+> - **`S11b` (`11b-fish-fatigue`):** Kalan syvempi väsytysmalli (`stamina`-silmukka).
 > - **`S12` (`12-trolling-window-and-tangles`):** Uisteluikkunakalibrointi ja `TANGLED`-solmun selvitys kannella.
 > - **`S16` (`16-lake-obstacles`):** `WorldFeatures`-saaret ja -karikot, jotka syöttävät esteet `RodSimulator.step(..., obstacles)`-rajapintaan (`SNAGGED`).

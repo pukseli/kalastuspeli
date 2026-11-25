@@ -98,6 +98,8 @@ func test_swap_occupied_holder_and_same_tick_exclusivity() -> void:
 	var occupied_holders: Dictionary = {}
 	for item_id in state.items:
 		var item: HeldItem = state.items[item_id]
+		if item.item_type != ItemConfig.ITEM_TYPE_ROD:
+			continue
 		assert_true(not item.is_carried(), "Zero rods carried after placing rod_b")
 		assert_true(not item.holder_id.is_empty(), "Every rod has a holder_id")
 		assert_true(not occupied_holders.has(item.holder_id), "All 6 rods occupy distinct holders")

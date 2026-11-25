@@ -17,8 +17,9 @@
 | S8 | `08-trolling-lines` | laskea siiman veteen, säätää sen pituutta ja nähdä vieheet ja plaanarit viuhkana veneen perässä | `RodState` (siima, viehe ja `PlanerBoard`) | `done` |
 | S9a | `09a-bite-and-reel` | saada tärpin vapaan (lajikohtaiset signaalit, jarru/räikkä, pintahypyt), kelata kalan vapa kädessä veneen viereen ja yrittää nostoa ilman haavia | `FishState` (tärppi, lajit, jarru/räikkä ja kelaus) | `done` |
 | S9b | `09b-planer-detach` | kelata plaanarin veneen laidalle irrotuslukkoon ja irrottaa sen pitämällä `E`-näppäintä pohjassa mittarin täyttymiseen asti (yksin tai kaverin auttamana) | Jatkuva pidettävä interaktio (`PlayerInput.interact_held` + `detach_progress`) | `done` |
-| S10 | `10-landing-net-and-catch` | hakea haavin telineestä, kauhaista veneen vieressä olevan kalan ja kipata sen sumppuun, jolloin saalislaskuri kasvaa (plaanarin irrotus siirtyi S9b:hen) ⛳ | Haavitus (haavi → sumppu → saalislaskuri) | `draft` |
+| S10 | `10-landing-net-and-catch` | poimia keskikannella lojuvan haavin (`E`), pudottaa sen vapaasti kannelle, kauhaista kalan (onnistuminen väsymyksen mukaan) ja nähdä tiimin saalislaskurin ⛳ | Haavi (`HeldItem` `"net"` + vapaa kansisijainti) ja saalisloki | `done` |
 | S11 | `11-line-tension` | hallita siiman kireyttä kalan syöksyissä: ylikelaus katkaisee siiman, löysä siima päästää kalan | Siiman kireys (`tension`) | `draft` |
+| S11b | `11b-fish-fatigue` | väsyttää isoja kaloja aktiivisesti oikealla rytmillä ja jarrulla ennen haavitusta | Kalan syvempi väsytysmalli (`stamina`-silmukka) | `draft` |
 | S12 | `12-trolling-window-and-tangles` | pitää vauhdin uisteluikkunassa, kokea siimasotkut (pysähdys tai jyrkkä käännös) ja selvittää solmun kannella | Siimasotkutila (uisteluikkuna laukaisimena) | `draft` |
 | S13 | `13-rod-threading` | pujottaa tärppivavan ulommaiseksi (`-1 → -3`) kaverin siirtäessä vapoja tieltä; sisäpaikalta kelaaminen sotkee siimat | Siimojen risteämisen tunnistus | `draft` |
 | S14 | `14-waves-and-buoyancy` | ajaa aallokossa, jossa vene keikkuu ja kallistuu | Deterministinen `WaveField` (4 pisteen kellunta) | `draft` |

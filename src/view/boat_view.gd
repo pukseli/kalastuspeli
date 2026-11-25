@@ -4,9 +4,11 @@ extends Node3D
 var players_container: Node3D
 var holders_container: Node3D
 var holder_rods_container: Node3D
+var deck_items_container: Node3D
 var _player_views: Dictionary = {}
 var _holder_meta: Dictionary = {}
 var _holder_rod_views: Dictionary = {}
+var _deck_item_views: Dictionary = {}
 var _configured_layout_sig: String = ""
 var _holder_socket_mesh: CylinderMesh
 var _rod_shaft_mesh: CylinderMesh
@@ -67,6 +69,10 @@ func _init() -> void:
 	holder_rods_container = Node3D.new()
 	holder_rods_container.name = "HolderRodsContainer"
 	add_child(holder_rods_container)
+
+	deck_items_container = Node3D.new()
+	deck_items_container.name = "DeckItemsContainer"
+	add_child(deck_items_container)
 
 	players_container = Node3D.new()
 	players_container.name = "PlayersContainer"
@@ -166,10 +172,15 @@ func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dict
 		configure_holders(item_config)
 
 	var active_resting: Dictionary = {}
+	var active_deck: Dictionary = {}
 	for iid in items:
 		var item: HeldItem = items[iid]
-		if item != null and not item.is_carried() and _holder_meta.has(item.holder_id):
+		if item == null:
+			continue
+		if not item.is_carried() and _holder_meta.has(item.holder_id):
 			active_resting[str(iid)] = item
+		elif item.is_on_deck():
+			active_deck[str(iid)] = item
 
 	for existing_iid in _holder_rod_views.keys():
 		if not active_resting.has(existing_iid):
@@ -208,6 +219,24 @@ func apply_items(items: Dictionary, item_config: ItemConfig = null, fishes: Dict
 		if tip != null and not _rod_tip_meshes.is_empty():
 			tip.mesh = _rod_tip_meshes[posmod(item.color_index, _rod_tip_meshes.size())]
 
+	for existing_did in _deck_item_views.keys():
+		if not active_deck.has(existing_did):
+			var stale_deck: Node3D = _deck_item_views[existing_did]
+			_deck_item_views.erase(existing_did)
+			_free_node_safe(stale_deck)
+
+	for iid in active_deck:
+		var deck_item: HeldItem = active_deck[iid]
+		var deck_node: Node3D
+		if _deck_item_views.has(iid):
+			deck_node = _deck_item_views[iid] as Node3D
+		else:
+			deck_node = _create_deck_item_node(iid, deck_item.item_type)
+			deck_items_container.add_child(deck_node)
+			_deck_item_views[iid] = deck_node
+		deck_node.position = deck_item.deck_position + Vector3(0.0, 0.04, 0.0)
+		deck_node.rotation_degrees = Vector3(90.0, 20.0, 0.0)
+
 
 func get_visible_resting_rod_count() -> int:
 	var count := 0
@@ -215,6 +244,28 @@ func get_visible_resting_rod_count() -> int:
 		if child is Node3D and (child as Node3D).visible:
 			count += 1
 	return count
+
+
+func get_visible_deck_item_count() -> int:
+	if deck_items_container == null:
+		return 0
+	var count := 0
+	for child in deck_items_container.get_children():
+		if child is Node3D and (child as Node3D).visible:
+			count += 1
+	return count
+
+
+func _create_deck_item_node(item_id: String, item_type: String) -> Node3D:
+	var root := Node3D.new()
+	root.name = "DeckItem_%s" % item_id
+	if item_type == ItemConfig.ITEM_TYPE_NET:
+		var net_vis := PlayerView.create_landing_net_visual()
+		net_vis.position = Vector3(0.0, -0.55, 0.0)
+		root.add_child(net_vis)
+	else:
+		root.add_child(_create_resting_rod_node(item_id))
+	return root
 
 
 func _create_resting_rod_node(item_id: String) -> Node3D:
@@ -289,3 +340,7 @@ func apply_players(players: Dictionary, items: Dictionary = {}, fishes: Dictiona
 		var carried := carried_by_peer.get(int(pid), null) as HeldItem
 		var carried_fish := fishes.get(carried.id, null) as FishState if carried != null else null
 		view.apply_held_item(carried, carried_fish)
+
+
+func get_player_view(peer_id: int) -> PlayerView:
+	return _player_views.get(peer_id, null) as PlayerView

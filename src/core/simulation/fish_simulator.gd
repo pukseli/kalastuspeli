@@ -8,6 +8,11 @@ const DEFAULT_DETACH_WINDOW_DISTANCE: float = 3.5
 const DEFAULT_DETACH_HOLD_DURATION: float = 0.8
 const DEFAULT_DETACH_DECAY_RATE: float = 1.5
 const DEFAULT_COOP_DETACH_RADIUS: float = 1.6
+const DEFAULT_SCOOP_RADIUS: float = 1.6
+const DEFAULT_SCOOP_HOLD_DURATION: float = 0.4
+const DEFAULT_SCOOP_DECAY_RATE: float = 1.8
+const DEFAULT_SCOOP_TIRED_STAMINA: float = 0.1
+const DEFAULT_SCOOP_FAIL_BOLT_LINE: float = 5.0
 
 const SPECIES_SPECS: Dictionary = {
 	FishState.SPECIES_VENDACE: {
@@ -214,6 +219,11 @@ class Config extends RefCounted:
 	var ready_to_land_distance: float = 1.5
 	var lift_hold_duration: float = 1.2
 	var lift_decay_rate: float = 1.5
+	var scoop_radius: float = DEFAULT_SCOOP_RADIUS
+	var scoop_hold_duration: float = DEFAULT_SCOOP_HOLD_DURATION
+	var scoop_decay_rate: float = DEFAULT_SCOOP_DECAY_RATE
+	var scoop_tired_stamina: float = DEFAULT_SCOOP_TIRED_STAMINA
+	var scoop_fail_bolt_line: float = DEFAULT_SCOOP_FAIL_BOLT_LINE
 	var ready_unattended_timeout_sec: float = 25.0
 	var small_max_kg: float = 1.0
 	var medium_max_kg: float = 4.0
@@ -334,6 +344,61 @@ static func find_detach_target_for_player(
 	return {"rod_id": best_rid, "mode": best_mode, "distance": best_dist}
 
 
+static func find_scoop_target_for_player(
+	state: GameState,
+	peer_id: int,
+	scoop_radius: float = DEFAULT_SCOOP_RADIUS
+) -> Dictionary:
+	if state == null or peer_id == 0 or not state.players.has(peer_id):
+		return {}
+	var player: PlayerState = state.players[peer_id]
+	if player.is_bot or state.is_player_at_station(peer_id):
+		return {}
+	var held := state.get_player_held_item(peer_id)
+	if held == null or held.item_type != ItemConfig.ITEM_TYPE_NET:
+		return {}
+
+	var fish_ids: Array[String] = []
+	for fid in state.fishes.keys():
+		fish_ids.append(str(fid))
+	fish_ids.sort()
+
+	var best_rid := ""
+	var best_mode := ""
+	var best_dist := INF
+
+	for rid in fish_ids:
+		var fish := state.get_fish_state(rid)
+		var item := state.items.get(rid, null) as HeldItem
+		if fish == null or item == null or not fish.is_ready_to_land():
+			continue
+		if not item.is_carried() and not item.holder_id.is_empty() and state.item_config != null:
+			var holder := state.item_config.get_holder(item.holder_id)
+			if holder.is_empty():
+				continue
+			var pos: Vector3 = holder.get("local_position", Vector3.ZERO)
+			var dx := player.local_position.x - pos.x
+			var dz := player.local_position.z - pos.z
+			var dist := sqrt(dx * dx + dz * dz)
+			if dist <= scoop_radius and dist < best_dist:
+				best_dist = dist
+				best_rid = rid
+				best_mode = "holder"
+		elif item.is_carried() and item.carrier_peer_id != peer_id and state.players.has(item.carrier_peer_id):
+			var carrier: PlayerState = state.players[item.carrier_peer_id]
+			var dx := player.local_position.x - carrier.local_position.x
+			var dz := player.local_position.z - carrier.local_position.z
+			var dist := sqrt(dx * dx + dz * dz)
+			if dist <= scoop_radius and dist < best_dist:
+				best_dist = dist
+				best_rid = rid
+				best_mode = "coop"
+
+	if best_rid.is_empty():
+		return {}
+	return {"rod_id": best_rid, "mode": best_mode, "distance": best_dist}
+
+
 static func format_weight(weight_kg: float) -> String:
 	if weight_kg >= 100.0:
 		return "%.0f kg" % weight_kg
@@ -431,6 +496,8 @@ func step(state: GameState, inputs: Dictionary, rod_sim: RodSimulator = null, de
 		if state.fish_notice_timer <= 0.0:
 			state.fish_notice_text = ""
 
+	var scooping_rods := _collect_scooping_rods(state, inputs)
+
 	var fish_ids: Array[String] = []
 	for fid in state.fishes.keys():
 		fish_ids.append(str(fid))
@@ -444,7 +511,7 @@ func step(state: GameState, inputs: Dictionary, rod_sim: RodSimulator = null, de
 			state.fishes.erase(fid)
 			continue
 		if fish.state == FishState.STATE_READY_TO_LAND:
-			_step_ready_to_land(state, inputs, item, rod, fish, helper_rod_sim, delta)
+			_step_ready_to_land(state, inputs, item, rod, fish, helper_rod_sim, delta, scooping_rods.has(fid))
 		else:
 			_step_hooked_fish(state, inputs, item, rod, fish, helper_rod_sim, delta)
 
@@ -637,6 +704,25 @@ func _step_hooked_fish(
 		fish.lift_progress = 0.0
 
 
+func _collect_scooping_rods(state: GameState, inputs: Dictionary) -> Dictionary:
+	var scooping: Dictionary = {}
+	var pids: Array[int] = []
+	for pid_raw in inputs.keys():
+		var pid := int(pid_raw)
+		if pid != 0 and not pids.has(pid):
+			pids.append(pid)
+	pids.sort()
+	for pid in pids:
+		if _get_line_input(_get_player_input(inputs, pid)) >= -0.1:
+			continue
+		var target := find_scoop_target_for_player(state, pid, config.scoop_radius)
+		if not target.is_empty():
+			var rid := str(target["rod_id"])
+			if not scooping.has(rid):
+				scooping[rid] = pid
+	return scooping
+
+
 func _step_ready_to_land(
 	state: GameState,
 	inputs: Dictionary,
@@ -644,16 +730,49 @@ func _step_ready_to_land(
 	rod: RodState,
 	fish: FishState,
 	rod_sim: RodSimulator,
-	delta: float
+	delta: float,
+	is_scooping: bool = false
 ) -> void:
 	fish.surfaced = true
 	fish.drag_rate = 0.0
 	fish.surge_timer = 0.0
 	fish.jump_progress = 0.0
 	fish.detach_progress = 0.0
-	fish.fight_phase = wrapf(fish.fight_phase + delta * 5.0, 0.0, TAU)
+	var thrash_speed := lerpf(2.2, 11.0, clampf(fish.stamina, 0.0, 1.0))
+	fish.fight_phase = wrapf(fish.fight_phase + delta * thrash_speed, 0.0, TAU)
 	rod.planer.line_out = config.ready_to_land_distance
 	rod.planer.reset_strike_reaction()
+
+	if is_scooping:
+		fish.unattended_time = 0.0
+		fish.scoop_progress = minf(1.0, fish.scoop_progress + delta / maxf(0.05, config.scoop_hold_duration))
+		if fish.scoop_progress >= 1.0:
+			var fail_chance := 0.0
+			if fish.stamina > config.scoop_tired_stamina:
+				var fresh_t := clampf(
+					(fish.stamina - config.scoop_tired_stamina) / maxf(0.01, 1.0 - config.scoop_tired_stamina),
+					0.0,
+					1.0
+				)
+				fail_chance = lerpf(0.15, 0.85, fresh_t)
+			if fail_chance > 0.0 and _rng.randf() < fail_chance:
+				fish.state = FishState.STATE_HOOKED
+				fish.scoop_progress = 0.0
+				fish.lift_progress = 0.0
+				fish.surge_timer = 1.2
+				fish.unattended_time = 0.0
+				rod.planer.line_out = minf(rod_sim.config.max_line_out, rod.planer.line_out + config.scoop_fail_bolt_line)
+				state.set_fish_notice("%s säikähti haavia ja syöksyi takaisin!" % get_species_display_name(fish.species), 3.5)
+				return
+			state.record_catch(fish.species, fish.weight_kg, fish.size_class, "net")
+			state.set_fish_notice(
+				"Saalis! %s (%s) haavittu veneeseen!" % [get_species_display_name(fish.species), format_weight(fish.weight_kg)],
+				5.0
+			)
+			_clear_fish_and_reset_rod(state, item, rod, rod_sim)
+			return
+	else:
+		fish.scoop_progress = maxf(0.0, fish.scoop_progress - config.scoop_decay_rate * delta)
 
 	var is_reeling := _is_player_reeling_rod(state, inputs, item)
 	if is_reeling:
@@ -666,11 +785,12 @@ func _step_ready_to_land(
 			if _rng.randf() < escape_chance:
 				state.set_fish_notice("%s (%s) karkasi nostossa ilman haavia!" % [sp_name, w_str], 5.0)
 			else:
+				state.record_catch(fish.species, fish.weight_kg, fish.size_class, "hand_lift")
 				state.set_fish_notice("Saalis! %s (%s) nostettu veneeseen!" % [sp_name, w_str], 5.0)
 			_clear_fish_and_reset_rod(state, item, rod, rod_sim)
 	else:
 		fish.lift_progress = maxf(0.0, fish.lift_progress - config.lift_decay_rate * delta)
-		if item == null or not item.is_carried():
+		if not is_scooping and (item == null or not item.is_carried()):
 			fish.unattended_time += delta
 			if fish.unattended_time >= config.ready_unattended_timeout_sec:
 				state.set_fish_notice("%s (%s) lipui tiehensä laidalta!" % [get_species_display_name(fish.species), format_weight(fish.weight_kg)], 4.5)

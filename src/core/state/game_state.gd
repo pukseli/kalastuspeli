@@ -9,6 +9,7 @@ var item_config: ItemConfig = ItemConfig.new()
 var items: Dictionary = item_config.create_initial_items()
 var rods: Dictionary = {}
 var fishes: Dictionary = {}
+var catches: Array = []
 var fish_notice_seq: int = 0
 var fish_notice_text: String = ""
 var fish_notice_timer: float = 0.0
@@ -60,6 +61,19 @@ func ensure_player(peer_id: int, is_bot: bool = false) -> PlayerState:
 
 
 func remove_player(peer_id: int) -> void:
+	var drop_pos := Vector3(
+		ItemConfig.DEFAULT_NET_DECK_POS.x,
+		CrewSimulator.DECK_SURFACE_Y,
+		ItemConfig.DEFAULT_NET_DECK_POS.z
+	)
+	if players.has(peer_id):
+		var disconnecting := players[peer_id] as PlayerState
+		if disconnecting != null:
+			drop_pos = Vector3(
+				clampf(disconnecting.local_position.x, CrewSimulator.DECK_MIN_X, CrewSimulator.DECK_MAX_X),
+				CrewSimulator.DECK_SURFACE_Y,
+				clampf(disconnecting.local_position.z, CrewSimulator.DECK_MIN_Z, CrewSimulator.DECK_MAX_Z)
+			)
 	players.erase(peer_id)
 	if peer_id == 0:
 		return
@@ -76,7 +90,13 @@ func remove_player(peer_id: int) -> void:
 			carried_ids.append(str(iid))
 	carried_ids.sort()
 	for iid in carried_ids:
-		return_item_to_holder(items[iid] as HeldItem)
+		var item := items[iid] as HeldItem
+		if item == null:
+			continue
+		if item.item_type == ItemConfig.ITEM_TYPE_NET or not return_item_to_holder(item):
+			item.carrier_peer_id = 0
+			item.holder_id = ""
+			item.deck_position = drop_pos
 
 
 func configure_items(cfg: ItemConfig) -> void:
@@ -84,6 +104,7 @@ func configure_items(cfg: ItemConfig) -> void:
 	items = item_config.create_initial_items()
 	rods.clear()
 	fishes.clear()
+	catches.clear()
 	fish_notice_seq = 0
 	fish_notice_text = ""
 	fish_notice_timer = 0.0
@@ -167,6 +188,27 @@ func set_fish_notice(text: String, duration: float = 4.5) -> void:
 	fish_notice_timer = maxf(0.0, duration)
 
 
+func record_catch(species: String, weight_kg: float, size_class: String, method: String = "net") -> void:
+	catches.append({
+		"species": species,
+		"weight_kg": maxf(0.01, weight_kg),
+		"size_class": size_class,
+		"method": method,
+	})
+
+
+func get_catch_count() -> int:
+	return catches.size()
+
+
+func get_biggest_catch_weight() -> float:
+	var max_w := 0.0
+	for entry in catches:
+		if entry is Dictionary:
+			max_w = maxf(max_w, float((entry as Dictionary).get("weight_kg", 0.0)))
+	return max_w
+
+
 func get_player_held_item(peer_id: int) -> HeldItem:
 	if peer_id == 0:
 		return null
@@ -230,6 +272,16 @@ func to_dict() -> Dictionary:
 		var fish: FishState = fishes[fid]
 		if fish != null:
 			fishes_dict[str(fid)] = fish.to_dict()
+	var catches_arr: Array = []
+	for entry in catches:
+		if entry is Dictionary:
+			var ed := entry as Dictionary
+			catches_arr.append({
+				"species": str(ed.get("species", FishState.SPECIES_PERCH)),
+				"weight_kg": maxf(0.01, float(ed.get("weight_kg", 0.5))),
+				"size_class": str(ed.get("size_class", FishState.SIZE_SMALL)),
+				"method": str(ed.get("method", "net")),
+			})
 	return {
 		"tick": tick,
 		"boat": boat.to_dict(),
@@ -238,6 +290,7 @@ func to_dict() -> Dictionary:
 		"items": items_dict,
 		"rods": rods_dict,
 		"fishes": fishes_dict,
+		"catches": catches_arr,
 		"fish_notice_seq": fish_notice_seq,
 		"fish_notice_text": fish_notice_text,
 		"fish_notice_timer": fish_notice_timer,
@@ -332,6 +385,20 @@ func from_dict(data: Dictionary) -> void:
 		for existing_fid in fishes.keys():
 			if not incoming_fish_ids.has(existing_fid):
 				fishes.erase(existing_fid)
+
+	var raw_catches: Variant = data.get("catches", null)
+	if raw_catches is Array:
+		var next_catches: Array = []
+		for raw_entry in (raw_catches as Array):
+			if raw_entry is Dictionary:
+				var ed := raw_entry as Dictionary
+				next_catches.append({
+					"species": str(ed.get("species", FishState.SPECIES_PERCH)),
+					"weight_kg": maxf(0.01, float(ed.get("weight_kg", 0.5))),
+					"size_class": str(ed.get("size_class", FishState.SIZE_SMALL)),
+					"method": str(ed.get("method", "net")),
+				})
+		catches = next_catches
 
 	fish_notice_seq = int(data.get("fish_notice_seq", fish_notice_seq))
 	fish_notice_text = str(data.get("fish_notice_text", ""))

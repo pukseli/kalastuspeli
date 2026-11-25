@@ -8,6 +8,7 @@ const WATER_Y: float = -0.25
 var boat_view: BoatView
 var camera: Camera3D
 var hud_label: Label
+var catch_hud_label: Label
 var fish_alert_label: Label
 var prompt_label: Label
 var line_prompt_label: Label
@@ -134,6 +135,11 @@ func _init() -> void:
 	hud_label = Label.new()
 	hud_label.position = Vector2(12.0, 12.0)
 	add_child(hud_label)
+
+	catch_hud_label = Label.new()
+	catch_hud_label.position = Vector2(12.0, 432.0)
+	catch_hud_label.text = "Saalis: 0 kpl"
+	add_child(catch_hud_label)
 
 	fish_alert_label = Label.new()
 	fish_alert_label.position = Vector2(12.0, 456.0)
@@ -320,11 +326,17 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 					best_holder = holder
 
 		var detach_target: Dictionary = {}
+		var deck_target: Dictionary = {}
 		if held_item == null:
 			detach_target = FishSimulator.find_detach_target_for_player(game_state, local_peer_id)
+			deck_target = ItemSimulator.find_nearest_deck_item(game_state, lp.local_position)
 
+		var deck_dist := float(deck_target.get("distance", INF))
 		var use_detach_prompt := not detach_target.is_empty() and (best_sid.is_empty() or float(detach_target.get("distance", INF)) < best_station_dist)
-		if use_detach_prompt:
+		var deck_prompt_active := false
+		if held_item != null and held_item.item_type == ItemConfig.ITEM_TYPE_NET:
+			prompt = "[E] Pudota haavi"
+		elif use_detach_prompt:
 			var target_rid := str(detach_target["rod_id"])
 			var target_item := game_state.items.get(target_rid, null) as HeldItem
 			var target_rod := game_state.get_rod_state(target_rid)
@@ -343,6 +355,10 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 				prompt = "[Pidä E] Irrota plaanari (%s) %d%%" % [holder_label, detach_pct]
 				var dist_m := target_rod.planer.line_out if target_rod != null else 0.0
 				line_prompt = "[Pidä E pohjassa] Irrota plaanari (%d%%) | %s (Plaanari): %.1f m" % [detach_pct, rod_name, dist_m]
+		elif not deck_target.is_empty() and (best_sid.is_empty() or deck_dist <= best_station_dist) and (best_hid.is_empty() or deck_dist < best_holder_dist):
+			deck_prompt_active = true
+			var deck_item := deck_target["item"] as HeldItem
+			prompt = "[E] Poimi haavi" if deck_item.item_type == ItemConfig.ITEM_TYPE_NET else "[E] Poimi %s" % _format_held_item_label(deck_item)
 		elif not best_sid.is_empty() and (best_hid.is_empty() or best_station_dist <= best_holder_dist):
 			var cfg := StationConfig.get_station_config(best_sid)
 			var occupant := int(game_state.stations.get(best_sid, 0))
@@ -368,10 +384,24 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 				else:
 					prompt = "[E] Vaihda vapa (%s)" % label
 
+		if line_prompt.is_empty() and held_item != null and held_item.item_type == ItemConfig.ITEM_TYPE_NET:
+			var scoop_target := FishSimulator.find_scoop_target_for_player(game_state, local_peer_id)
+			if not scoop_target.is_empty():
+				var scoop_rid := str(scoop_target["rod_id"])
+				var scoop_fish := game_state.get_fish_state(scoop_rid)
+				var scoop_item := game_state.items.get(scoop_rid, null) as HeldItem
+				var scoop_pct := roundi(scoop_fish.scoop_progress * 100.0) if scoop_fish != null else 0
+				var sp_label := "%s (%s)" % [
+					FishSimulator.get_species_display_name(scoop_fish.species),
+					FishSimulator.format_weight(scoop_fish.weight_kg),
+				]
+				var rod_name := _format_held_item_label(scoop_item)
+				line_prompt = "[Space] Kauhaise (%d%%) | %s | %s" % [scoop_pct, sp_label, rod_name]
+
 		var active_rod_item: HeldItem = null
 		if held_item != null and held_item.item_type == ItemConfig.ITEM_TYPE_ROD:
 			active_rod_item = held_item
-		elif game_state.item_config != null:
+		elif held_item == null and not deck_prompt_active and game_state.item_config != null:
 			var best_rod_dist := INF
 			for holder in game_state.item_config.holders:
 				var hid := str(holder.get("id", ""))
@@ -469,6 +499,7 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 					]
 
 	var fish_alert := _build_fish_alert_text(game_state)
+	var catch_hud := _build_catch_hud_text(game_state)
 	_update_camera_and_hud(
 		game_state.boat,
 		prompt,
@@ -478,18 +509,29 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 		line_prompt,
 		game_state.get_deployed_rod_count(),
 		game_state.rods.size(),
-		fish_alert
+		fish_alert,
+		catch_hud
 	)
 
 
 func _format_held_item_label(item: HeldItem) -> String:
 	if item == null:
 		return "—"
+	if item.item_type == ItemConfig.ITEM_TYPE_NET:
+		return "Haavi"
 	if item.item_type == ItemConfig.ITEM_TYPE_ROD:
 		if item.id.begins_with("rod_"):
 			return "Vapa #%s" % item.id.substr(4)
 		return "Vapa"
 	return item.id if not item.id.is_empty() else item.item_type
+
+
+func _build_catch_hud_text(game_state: GameState) -> String:
+	var count := game_state.get_catch_count()
+	if count <= 0:
+		return "Saalis: 0 kpl"
+	var biggest := game_state.get_biggest_catch_weight()
+	return "Saalis: %d kpl | Isoin: %s" % [count, FishSimulator.format_weight(biggest)]
 
 
 func _update_camera_and_hud(
@@ -501,7 +543,8 @@ func _update_camera_and_hud(
 	line_prompt: String = "",
 	deployed_rods: int = 0,
 	total_rods: int = 0,
-	fish_alert: String = ""
+	fish_alert: String = "",
+	catch_hud: String = "Saalis: 0 kpl"
 ) -> void:
 	camera_controller.set_mode(in_helm, snap_camera)
 	camera_controller.step(snap_camera)
@@ -536,6 +579,8 @@ func _update_camera_and_hud(
 			control_mode,
 		]
 
+	if catch_hud_label != null:
+		catch_hud_label.text = catch_hud
 	if fish_alert_label != null:
 		fish_alert_label.text = fish_alert
 	prompt_label.text = prompt
@@ -612,18 +657,19 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			var fish_2d := _fish_simulator_helper.get_fish_world_pos_2d(game_state, item, rod, fish, _rod_simulator_helper)
 			var y_pos := WATER_Y + 0.04
 			var jump_pitch := 0.0
+			var thrash_scale := lerpf(0.35, 1.45, clampf(fish.stamina, 0.0, 1.0)) if fish.is_ready_to_land() else 1.0
 			if fish.is_jumping():
 				y_pos = WATER_Y + FishSimulator.get_fish_jump_height_offset(fish)
 				jump_pitch = cos(fish.jump_progress * PI) * 0.85
 			else:
-				var wiggle_lat := sin(fish.fight_phase * 2.5) * 0.14
+				var wiggle_lat := sin(fish.fight_phase * 2.5) * 0.14 * thrash_scale
 				var right_2d := Vector2(cos(game_state.boat.heading), -sin(game_state.boat.heading))
 				fish_2d += right_2d * wiggle_lat
 			end_world = Vector3(fish_2d.x, y_pos, fish_2d.y)
 			active_fishes[rid_str] = {
 				"pos": end_world,
 				"species": fish.species,
-				"yaw": game_state.boat.heading + rod.trail_angle + sin(fish.fight_phase * 3.0) * 0.22,
+				"yaw": game_state.boat.heading + rod.trail_angle + sin(fish.fight_phase * 3.0) * 0.22 * thrash_scale,
 				"pitch": jump_pitch,
 			}
 		else:
