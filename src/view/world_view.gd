@@ -7,6 +7,7 @@ const WATER_Y: float = -0.25
 const LINE_HIGH_RATIO: float = 0.55
 const LINE_CRITICAL_RATIO: float = 0.80
 const METER_BAR_WIDTH: float = 252.0
+const METER_SUB_BAR_WIDTH: float = 122.0
 const METER_BAR_HEIGHT: float = 16.0
 const METER_SPOOL_HEIGHT: float = 6.0
 const METER_DRAG_MARKER_WIDTH: float = 4.0
@@ -27,6 +28,13 @@ var tension_bar_fill: ColorRect
 var drag_marker: ColorRect
 var spool_bar_bg: ColorRect
 var spool_bar_fill: ColorRect
+var fatigue_row_root: Control
+var fatigue_label: Label
+var fish_stamina_bar_bg: ColorRect
+var fish_stamina_bar_fill: ColorRect
+var rhythm_bar_bg: ColorRect
+var rhythm_bar_fill: ColorRect
+var _tension_panel_bg: ColorRect
 var trolling_lines_container: Node3D
 var trolling_lines_mesh_instance: MeshInstance3D
 var planers_container: Node3D
@@ -190,11 +198,11 @@ func _init_tension_meter_hud() -> void:
 	tension_meter_root.visible = false
 	add_child(tension_meter_root)
 
-	var panel_bg := ColorRect.new()
-	panel_bg.position = Vector2.ZERO
-	panel_bg.size = Vector2(268.0, 78.0)
-	panel_bg.color = Color(0.06, 0.08, 0.11, 0.78)
-	tension_meter_root.add_child(panel_bg)
+	_tension_panel_bg = ColorRect.new()
+	_tension_panel_bg.position = Vector2.ZERO
+	_tension_panel_bg.size = Vector2(268.0, 78.0)
+	_tension_panel_bg.color = Color(0.06, 0.08, 0.11, 0.78)
+	tension_meter_root.add_child(_tension_panel_bg)
 
 	tension_meter_title = Label.new()
 	tension_meter_title.position = Vector2(8.0, 4.0)
@@ -243,6 +251,43 @@ func _init_tension_meter_hud() -> void:
 	tension_meter_footer.size = Vector2(METER_BAR_WIDTH, 18.0)
 	tension_meter_footer.add_theme_font_size_override("font_size", 11)
 	tension_meter_root.add_child(tension_meter_footer)
+
+	fatigue_row_root = Control.new()
+	fatigue_row_root.name = "FatigueRowHUD"
+	fatigue_row_root.position = Vector2(8.0, 74.0)
+	fatigue_row_root.size = Vector2(METER_BAR_WIDTH, 26.0)
+	fatigue_row_root.visible = false
+	tension_meter_root.add_child(fatigue_row_root)
+
+	fatigue_label = Label.new()
+	fatigue_label.position = Vector2.ZERO
+	fatigue_label.size = Vector2(METER_BAR_WIDTH, 14.0)
+	fatigue_label.add_theme_font_size_override("font_size", 11)
+	fatigue_row_root.add_child(fatigue_label)
+
+	fish_stamina_bar_bg = ColorRect.new()
+	fish_stamina_bar_bg.position = Vector2(0.0, 16.0)
+	fish_stamina_bar_bg.size = Vector2(METER_SUB_BAR_WIDTH, 7.0)
+	fish_stamina_bar_bg.color = Color(0.14, 0.16, 0.20, 0.95)
+	fatigue_row_root.add_child(fish_stamina_bar_bg)
+
+	fish_stamina_bar_fill = ColorRect.new()
+	fish_stamina_bar_fill.position = Vector2.ZERO
+	fish_stamina_bar_fill.size = Vector2(METER_SUB_BAR_WIDTH, 7.0)
+	fish_stamina_bar_fill.color = Color(0.94, 0.34, 0.24)
+	fish_stamina_bar_bg.add_child(fish_stamina_bar_fill)
+
+	rhythm_bar_bg = ColorRect.new()
+	rhythm_bar_bg.position = Vector2(METER_BAR_WIDTH - METER_SUB_BAR_WIDTH, 16.0)
+	rhythm_bar_bg.size = Vector2(METER_SUB_BAR_WIDTH, 7.0)
+	rhythm_bar_bg.color = Color(0.14, 0.16, 0.20, 0.95)
+	fatigue_row_root.add_child(rhythm_bar_bg)
+
+	rhythm_bar_fill = ColorRect.new()
+	rhythm_bar_fill.position = Vector2.ZERO
+	rhythm_bar_fill.size = Vector2(0.0, 7.0)
+	rhythm_bar_fill.color = Color(0.45, 0.76, 0.96)
+	rhythm_bar_bg.add_child(rhythm_bar_fill)
 
 
 func _init_trolling_resources() -> void:
@@ -555,14 +600,27 @@ func apply_game_state(game_state: GameState, net_info: String = "", local_peer_i
 								]
 						else:
 							var is_slipping := active_fish.is_drag_active() or active_rod.is_drag_slipping
-							var raikka_tag := " [RÄIKKÄ!]" if is_slipping else ""
 							var sp_tag := " (%s)" % FishSimulator.get_species_display_name(active_fish.species) if active_fish.surfaced else " (Tuntematon kala)"
-							line_prompt = "[Space] Kelaa%s | %s%s: %.1f m" % [
-								raikka_tag,
-								rod_name,
-								sp_tag,
-								fish_dist,
-							]
+							if is_slipping:
+								line_prompt = "[Anna juosta!] [RÄIKKÄ!] | %s%s: %.1f m" % [
+									rod_name,
+									sp_tag,
+									fish_dist,
+								]
+							elif not active_fish.is_exhausted() and active_fish.fight_rhythm >= 0.45:
+								var rhythm_pct := roundi(active_fish.fight_rhythm * 100.0)
+								line_prompt = "[Space] Kelaa [RYTMI %d%%] | %s%s: %.1f m" % [
+									rhythm_pct,
+									rod_name,
+									sp_tag,
+									fish_dist,
+								]
+							else:
+								line_prompt = "[Space] Kelaa | %s%s: %.1f m" % [
+									rod_name,
+									sp_tag,
+									fish_dist,
+								]
 					else:
 						var big_or_tripped := (
 							bool(FishSimulator.get_strike_reaction_profile(active_fish.size_class).get("trips_planer", false))
@@ -742,6 +800,8 @@ func _update_tension_meter_hud(item: HeldItem, rod: RodState, fish: FishState) -
 		return
 	if item == null or rod == null:
 		tension_meter_root.visible = false
+		if fatigue_row_root != null:
+			fatigue_row_root.visible = false
 		return
 	tension_meter_root.visible = true
 	var eff_max := maxf(1.0, rod.get_effective_max_strength())
@@ -776,6 +836,33 @@ func _update_tension_meter_hud(item: HeldItem, rod: RodState, fish: FishState) -
 		roundi(eff_max),
 		roundi(rod.line_remaining_on_spool),
 	]
+
+	if fish != null and not fish.is_ready_to_land():
+		tension_meter_root.position.y = 390.0
+		tension_meter_root.size.y = 104.0
+		if _tension_panel_bg != null:
+			_tension_panel_bg.size.y = 104.0
+		if fatigue_row_root != null:
+			fatigue_row_root.visible = true
+			var stamina_ratio := clampf(fish.stamina, 0.0, 1.0)
+			var rhythm_ratio := clampf(fish.fight_rhythm, 0.0, 1.0)
+			fish_stamina_bar_fill.size.x = stamina_ratio * METER_SUB_BAR_WIDTH
+			fish_stamina_bar_fill.color = Color(0.28, 0.84, 0.50) if fish.is_exhausted() else (Color(0.95, 0.72, 0.20) if stamina_ratio <= 0.45 else Color(0.94, 0.34, 0.24))
+			rhythm_bar_fill.size.x = rhythm_ratio * METER_SUB_BAR_WIDTH
+			rhythm_bar_fill.color = Color(0.32, 0.92, 0.56) if rhythm_ratio >= 0.45 else Color(0.45, 0.76, 0.96)
+			var state_hint := "UUPUNUT!" if fish.is_exhausted() else ("ANNA JUOSTA" if (rod.is_drag_slipping or fish.is_drag_active()) else "KELAA [Space]")
+			fatigue_label.text = "Kala: %d%% | Rytmi: %d%% (%s)" % [
+				roundi(stamina_ratio * 100.0),
+				roundi(rhythm_ratio * 100.0),
+				state_hint,
+			]
+	else:
+		tension_meter_root.position.y = 416.0
+		tension_meter_root.size.y = 78.0
+		if _tension_panel_bg != null:
+			_tension_panel_bg.size.y = 78.0
+		if fatigue_row_root != null:
+			fatigue_row_root.visible = false
 
 
 func update_frame(blend: Dictionary, delta: float, game_state: GameState = null) -> void:
@@ -886,7 +973,8 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 			var fish_2d := _fish_simulator_helper.get_fish_world_pos_2d(game_state, item, rod, fish, _rod_simulator_helper)
 			var y_pos := WATER_Y + 0.04
 			var jump_pitch := 0.0
-			var thrash_scale := lerpf(0.35, 1.45, clampf(fish.stamina, 0.0, 1.0)) if fish.is_ready_to_land() else 1.0
+			var fish_roll := 0.0
+			var thrash_scale := lerpf(0.35, 1.45, clampf(fish.stamina, 0.0, 1.0))
 			if fish.is_jumping():
 				y_pos = WATER_Y + FishSimulator.get_fish_jump_height_offset(fish)
 				jump_pitch = cos(fish.jump_progress * PI) * 0.85
@@ -894,12 +982,14 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 				var wiggle_lat := sin(fish.fight_phase * 2.5) * 0.14 * thrash_scale
 				var right_2d := Vector2(cos(game_state.boat.heading), -sin(game_state.boat.heading))
 				fish_2d += right_2d * wiggle_lat
+				fish_roll = lerpf(0.55, 0.0, clampf((fish.stamina - FishState.EXHAUSTED_STAMINA) / 0.15, 0.0, 1.0))
 			end_world = Vector3(fish_2d.x, y_pos, fish_2d.y)
 			active_fishes[rid_str] = {
 				"pos": end_world,
 				"species": fish.species,
 				"yaw": game_state.boat.heading + rod.trail_angle + sin(fish.fight_phase * 3.0) * 0.22 * thrash_scale,
 				"pitch": jump_pitch,
+				"roll": fish_roll,
 			}
 		else:
 			var lure_2d := _rod_simulator_helper.get_lure_world_pos_2d(game_state, item, rod)
@@ -1037,7 +1127,7 @@ func _apply_trolling_rods(game_state: GameState) -> void:
 		var v_len := float(spec.get("visual_length", 0.6))
 		var v_rad := float(spec.get("visual_radius", 0.12))
 		f_node.position = f_info["pos"]
-		f_node.rotation = Vector3(float(f_info["pitch"]), float(f_info["yaw"]), 0.0)
+		f_node.rotation = Vector3(float(f_info["pitch"]), float(f_info["yaw"]), float(f_info.get("roll", 0.0)))
 		f_node.scale = Vector3(v_rad * 2.0, v_rad * 2.0, v_len)
 		_update_fish_visual_species(rid, f_node, sp)
 

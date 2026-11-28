@@ -472,6 +472,7 @@ func _interpolate_fishes_into(
 
 		if fa != null and fb != null:
 			dst.stamina = lerpf(fa.stamina, fb.stamina, t)
+			dst.fight_rhythm = lerpf(fa.fight_rhythm, fb.fight_rhythm, t)
 			dst.drag_rate = lerpf(fa.drag_rate, fb.drag_rate, t)
 			dst.lift_progress = lerpf(fa.lift_progress, fb.lift_progress, t)
 			dst.scoop_progress = lerpf(fa.scoop_progress, fb.scoop_progress, t)
@@ -483,6 +484,7 @@ func _interpolate_fishes_into(
 				dst.jump_progress = fb.jump_progress
 		elif fb != null:
 			dst.stamina = fb.stamina
+			dst.fight_rhythm = fb.fight_rhythm
 			dst.drag_rate = fb.drag_rate
 			dst.lift_progress = fb.lift_progress
 			dst.scoop_progress = fb.scoop_progress

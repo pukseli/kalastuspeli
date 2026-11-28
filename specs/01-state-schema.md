@@ -159,15 +159,15 @@
 | `unattended_time` | `float` | `0.0` | Ilman kelausta kulunut aika (`s`) |
 | `surfaced` | `bool` | `false` | Onko kala noussut pintaan näkyviin (`<= 8.0 m`) |
 | `fight_phase` | `float` | `0.0` | Jatkuva taisteluvärinän vaihe radiaaneina (`0 .. TAU`) |
+| `fight_rhythm` | `float` | `0.0` | Aktiivisen taistelurytmin laatu (`0.0 .. 1.0`, lisätty S11c) |
 
-**Apumetodit:** `is_ready_to_land() -> bool`, `is_jumping() -> bool`, `is_drag_active() -> bool`, `compute_size_class(...) -> String`, `copy_from(other: FishState) -> void`, `clone() -> FishState`
+**Apumetodit:** `is_exhausted() -> bool` (`stamina <= 0.05`, S11c), `is_ready_to_land() -> bool`, `is_jumping() -> bool`, `is_drag_active() -> bool`, `compute_size_class(...) -> String`, `copy_from(other: FishState) -> void`, `clone() -> FishState`
 **Serialisointi:** `to_dict() -> Dictionary`, `from_dict(data: Dictionary) -> void`
 
 ---
 
-## Suunniteltu tietoskeema (tulevat viipaleet S11+ — ks. [`specs/02-mechanics/line-physics.md`](02-mechanics/line-physics.md) ja [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
+## Suunniteltu tietoskeema (tulevat viipaleet S12+ — ks. [`specs/02-mechanics/line-physics.md`](02-mechanics/line-physics.md) ja [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
 
-> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState` (sis. jännityksen, jarrun, puolan, kunnon ja luiston `S11a`), `GameState.rods`, `FishState`, `GameState.fishes`, `PlayerInput.interact_held`, `PlayerInput.drag_input` (`S11a`), `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` (`10c`) on toteutettu viipaleissa `S8–S11b` (`S11b` oli puhdas näkymäviipale ilman tietoskeemadeltaa). Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
-> - **`S11c` (`11c-fish-fatigue`):** Kalan syvempi väsytysmalli (`stamina`-silmukka).
+> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState` (sis. jännityksen, jarrun, puolan, kunnon ja luiston `S11a`), `GameState.rods`, `FishState` (sis. `fight_rhythm` `S11c`), `GameState.fishes`, `PlayerInput.interact_held`, `PlayerInput.drag_input` (`S11a`), `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` (`10c`) on toteutettu viipaleissa `S8–S11c` (`S11b` oli puhdas näkymäviipale ilman tietoskeemadeltaa). Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
 > - **`S12` (`12-trolling-window-and-tangles`):** Uisteluikkunakalibrointi ja `TANGLED`-solmun selvitys kannella.
 > - **`S16` (`16-lake-obstacles`):** `WorldFeatures`-saaret ja -karikot (`SNAGGED`), jotka syöttävät esteet `RodSimulator.step(..., obstacles)`-rajapintaan, sekä äkillinen shokkikuormakatkeaminen kovassa vauhdissa/jarrulla.

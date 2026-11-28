@@ -2,6 +2,7 @@ class_name FishState
 extends RefCounted
 ## Pure state model for a hooked fish, stamina, reel drag, breach jump, and netless lift progress.
 
+const EXHAUSTED_STAMINA: float = 0.05
 const STATE_HOOKED: String = "HOOKED"
 const STATE_READY_TO_LAND: String = "READY_TO_LAND"
 
@@ -55,6 +56,11 @@ var hooked_time: float = 0.0
 var unattended_time: float = 0.0
 var surfaced: bool = false
 var fight_phase: float = 0.0
+var fight_rhythm: float = 0.0
+
+
+func is_exhausted() -> bool:
+	return stamina <= EXHAUSTED_STAMINA
 
 
 func is_ready_to_land() -> bool:
@@ -102,6 +108,7 @@ func copy_from(other: FishState) -> void:
 	unattended_time = other.unattended_time
 	surfaced = other.surfaced
 	fight_phase = other.fight_phase
+	fight_rhythm = other.fight_rhythm
 
 
 func clone() -> FishState:
@@ -129,6 +136,7 @@ func to_dict() -> Dictionary:
 		"unattended_time": unattended_time,
 		"surfaced": surfaced,
 		"fight_phase": fight_phase,
+		"fight_rhythm": fight_rhythm,
 	}
 
 
@@ -153,3 +161,4 @@ func from_dict(data: Dictionary) -> void:
 	unattended_time = maxf(0.0, float(data.get("unattended_time", 0.0)))
 	surfaced = bool(data.get("surfaced", false))
 	fight_phase = wrapf(float(data.get("fight_phase", 0.0)), 0.0, TAU)
+	fight_rhythm = clampf(float(data.get("fight_rhythm", 0.0)), 0.0, 1.0)

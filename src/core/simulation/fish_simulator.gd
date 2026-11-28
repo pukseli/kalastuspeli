@@ -13,6 +13,7 @@ const DEFAULT_SCOOP_HOLD_DURATION: float = 0.4
 const DEFAULT_SCOOP_DECAY_RATE: float = 1.8
 const DEFAULT_SCOOP_TIRED_STAMINA: float = 0.1
 const DEFAULT_SCOOP_FAIL_BOLT_LINE: float = 5.0
+const EXHAUSTED_STAMINA: float = FishState.EXHAUSTED_STAMINA
 
 const SPECIES_SPECS: Dictionary = {
 	FishState.SPECIES_VENDACE: {
@@ -204,8 +205,23 @@ class Config extends RefCounted:
 	var surge_duration_max: float = 2.4
 	var surge_cooldown_min: float = 2.0
 	var surge_cooldown_max: float = 3.8
+	var fatigue_min_work_tension: float = 15.0
+	var fatigue_tension_ref: float = 75.0
+	var stamina_drain_surge_drag: float = 0.13
 	var stamina_drain_reeling: float = 0.11
 	var stamina_drain_passive: float = 0.015
+	var stamina_drain_passive_held: float = 0.025
+	var stamina_drain_holder_slip: float = 0.030
+	var stamina_recovery_rate: float = 0.06
+	var rhythm_gain_yield: float = 0.35
+	var rhythm_gain_reel: float = 0.30
+	var rhythm_penalty_panic: float = 0.80
+	var rhythm_decay_idle: float = 0.25
+	var rhythm_decay_holder: float = 0.35
+	var rhythm_decay_slack: float = 0.45
+	var rhythm_drain_bonus_max: float = 1.65
+	var panic_reel_drain_mult: float = 0.50
+	var panic_reel_shakeoff_bonus: float = 0.03
 	var shakeoff_chance_per_sec: float = 0.025
 	var shakeoff_unattended_bonus: float = 0.04
 	var jump_chance_on_surge: float = 0.75
@@ -267,6 +283,15 @@ static func get_strike_reaction_profile(size_class: String) -> Dictionary:
 	if STRIKE_REACTION_PROFILES.has(size_class):
 		return STRIKE_REACTION_PROFILES[size_class]
 	return STRIKE_REACTION_PROFILES[FishState.SIZE_SMALL]
+
+
+static func get_fatigue_drain_scale(species_id: String, weight_kg: float) -> float:
+	var spec := get_species_spec(species_id)
+	var base_scale := float(spec.get("stamina_drain_scale", 1.0))
+	var w_min := float(spec.get("weight_min", 0.3))
+	var w_max := maxf(w_min + 0.001, float(spec.get("weight_max", 1.2)))
+	var weight_frac := clampf((weight_kg - w_min) / (w_max - w_min), 0.0, 1.0)
+	return base_scale * lerpf(1.15, 0.80, weight_frac)
 
 
 func compute_size_class(weight_kg: float) -> String:
@@ -544,7 +569,7 @@ func _spawn_fish_on_rod(
 
 	var profile := get_strike_reaction_profile(fish.size_class)
 	var trips := bool(profile.get("trips_planer", false))
-	if fish.stamina > 0.05:
+	if not fish.is_exhausted():
 		if trips and sp != FishState.SPECIES_ZANDER:
 			fish.surge_timer = _rng.randf_range(0.9, 1.4)
 			fish.surge_cooldown = _rng.randf_range(config.surge_cooldown_min, config.surge_cooldown_max)
@@ -621,23 +646,21 @@ func _step_hooked_fish(
 	fish.hooked_time += delta
 	fish.unattended_time = 0.0 if (is_reeling or is_detaching) else (fish.unattended_time + delta)
 
-	var phase_speed := 10.0 if fish.surge_timer > 0.0 else (6.5 if fish.stamina > 0.05 else 3.5)
+	var phase_speed := 10.0 if fish.surge_timer > 0.0 else (6.5 if not fish.is_exhausted() else 3.5)
 	fish.fight_phase = wrapf(fish.fight_phase + delta * phase_speed, 0.0, TAU)
 
-	# Drain stamina faster while actively reeling; small species start exhausted (0.0)
-	var drain_scale := float(spec.get("stamina_drain_scale", 1.0))
-	var drain := (config.stamina_drain_reeling if is_reeling else config.stamina_drain_passive) * drain_scale
-	fish.stamina = maxf(0.0, fish.stamina - drain * delta)
-
-	# Update surges and breach jumps while fish still has stamina
-	if fish.stamina > 0.05 and float(spec["initial_stamina"]) > 0.0:
+	# Update surges and breach jumps while fish still has stamina; surge timing scales with remaining stamina
+	if not fish.is_exhausted() and float(spec["initial_stamina"]) > 0.0:
 		if fish.surge_timer > 0.0:
 			fish.surge_timer = maxf(0.0, fish.surge_timer - delta)
 		else:
 			fish.surge_cooldown -= delta
 			if fish.surge_cooldown <= 0.0:
-				fish.surge_timer = _rng.randf_range(config.surge_duration_min, config.surge_duration_max)
-				fish.surge_cooldown = _rng.randf_range(config.surge_cooldown_min, config.surge_cooldown_max)
+				var stamina_t := clampf(fish.stamina, 0.0, 1.0)
+				var dur_scale := lerpf(0.55, 1.15, stamina_t)
+				var cd_scale := lerpf(1.65, 0.85, stamina_t)
+				fish.surge_timer = _rng.randf_range(config.surge_duration_min, config.surge_duration_max) * dur_scale
+				fish.surge_cooldown = _rng.randf_range(config.surge_cooldown_min, config.surge_cooldown_max) * cd_scale
 				if bool(spec["can_jump"]) and fish.jump_progress <= 0.001 and _rng.randf() <= config.jump_chance_on_surge:
 					fish.jump_progress = 0.002
 	else:
@@ -668,13 +691,16 @@ func _step_hooked_fish(
 	if bool(phys["snapped"]):
 		return
 	fish.drag_rate = float(phys["slip_speed"])
+	_step_fish_fatigue(item, rod, fish, spec, is_reeling, is_detaching, delta)
 
-	# Shake-off roll: never during grace period, never when exhausted (stamina <= 0.05)
+	# Shake-off roll: never during grace period, never when exhausted (stamina <= EXHAUSTED_STAMINA)
 	var is_slack := rod.line_tension < LinePhysics.SLACK_TENSION_THRESHOLD and not is_detaching
-	if fish.hooked_time >= config.grace_period_sec and fish.stamina > 0.05 and (fish.surge_timer > 0.0 or is_slack):
+	if fish.hooked_time >= config.grace_period_sec and not fish.is_exhausted() and (fish.surge_timer > 0.0 or is_slack):
 		var hazard := 0.0
 		if fish.surge_timer > 0.0:
 			hazard += config.shakeoff_chance_per_sec
+			if is_reeling and rod.is_drag_slipping:
+				hazard += config.panic_reel_shakeoff_bonus
 			if fish.unattended_time >= config.unattended_risk_delay_sec:
 				hazard += config.shakeoff_unattended_bonus
 		if is_slack:
@@ -729,6 +755,71 @@ func _step_hooked_fish(
 		fish.surge_timer = 0.0
 		fish.jump_progress = 0.0
 		fish.lift_progress = 0.0
+		fish.fight_rhythm = 0.0
+
+
+func _step_fish_fatigue(
+	item: HeldItem,
+	rod: RodState,
+	fish: FishState,
+	spec: Dictionary,
+	is_reeling: bool,
+	is_detaching: bool,
+	delta: float
+) -> void:
+	if float(spec.get("initial_stamina", 0.0)) <= 0.0:
+		fish.stamina = 0.0
+		fish.fight_rhythm = 0.0
+		fish.surge_timer = 0.0
+		return
+	if fish.is_exhausted():
+		fish.fight_rhythm = 0.0
+		fish.surge_timer = 0.0
+		return
+	if is_detaching:
+		return
+
+	var tension := rod.line_tension
+	var min_work := maxf(0.1, config.fatigue_min_work_tension)
+	if tension < min_work:
+		fish.fight_rhythm = maxf(0.0, fish.fight_rhythm - config.rhythm_decay_slack * delta)
+		var slack_frac := clampf((min_work - tension) / min_work, 0.0, 1.0)
+		var max_stamina := float(spec.get("initial_stamina", 1.0))
+		fish.stamina = minf(max_stamina, fish.stamina + config.stamina_recovery_rate * slack_frac * delta)
+		return
+
+	var tension_span := maxf(1.0, config.fatigue_tension_ref - min_work)
+	var tension_work := clampf((tension - min_work) / tension_span, 0.0, 1.35)
+	var eff_scale := get_fatigue_drain_scale(fish.species, fish.weight_kg)
+	var is_carried := item != null and item.is_carried()
+	var is_slipping := rod.is_drag_slipping
+	var is_surging := fish.surge_timer > 0.0
+
+	var drain := 0.0
+	if is_reeling and is_slipping:
+		# Panicked reeling against slipping drag breaks fight rhythm and halves fatigue efficiency
+		fish.fight_rhythm = maxf(0.0, fish.fight_rhythm - config.rhythm_penalty_panic * delta)
+		drain = config.stamina_drain_surge_drag * tension_work * config.panic_reel_drain_mult
+	elif is_carried and not is_reeling and (is_slipping or is_surging):
+		fish.fight_rhythm = minf(1.0, fish.fight_rhythm + config.rhythm_gain_yield * delta)
+		var rhythm_mult := lerpf(1.0, config.rhythm_drain_bonus_max, fish.fight_rhythm)
+		drain = config.stamina_drain_surge_drag * tension_work * rhythm_mult
+	elif is_reeling and not is_slipping:
+		fish.fight_rhythm = minf(1.0, fish.fight_rhythm + config.rhythm_gain_reel * delta)
+		var rhythm_mult := lerpf(1.0, config.rhythm_drain_bonus_max, fish.fight_rhythm)
+		drain = config.stamina_drain_reeling * maxf(0.35, tension_work) * rhythm_mult
+	elif is_carried:
+		fish.fight_rhythm = maxf(0.0, fish.fight_rhythm - config.rhythm_decay_idle * delta)
+		drain = config.stamina_drain_passive_held * tension_work
+	else:
+		fish.fight_rhythm = maxf(0.0, fish.fight_rhythm - config.rhythm_decay_holder * delta)
+		var holder_rate := config.stamina_drain_holder_slip if is_slipping else config.stamina_drain_passive
+		drain = holder_rate * tension_work
+
+	fish.stamina = maxf(0.0, fish.stamina - drain * eff_scale * delta)
+	if fish.is_exhausted():
+		fish.fight_rhythm = 0.0
+		fish.surge_timer = 0.0
 
 
 func _collect_scooping_rods(state: GameState, inputs: Dictionary) -> Dictionary:
@@ -765,6 +856,7 @@ func _step_ready_to_land(
 	fish.surge_timer = 0.0
 	fish.jump_progress = 0.0
 	fish.detach_progress = 0.0
+	fish.fight_rhythm = 0.0
 	rod.is_drag_slipping = false
 	rod.line_tension = LinePhysics.compute_water_drag(state.boat.forward_speed, rod)
 	var thrash_speed := lerpf(2.2, 11.0, clampf(fish.stamina, 0.0, 1.0))
@@ -880,7 +972,7 @@ func _update_planer_strike_reaction(rod: RodState, fish: FishState, delta: float
 	var t_shake := lerpf(float(profile["shake_rest"]), float(profile["shake_burst"]), cycle_intensity)
 	var t_drift := lerpf(float(profile["inward_drift_rest"]), float(profile["inward_drift_burst"]), cycle_intensity)
 
-	if fish.stamina <= 0.05 and fish.size_class != FishState.SIZE_SMALL:
+	if fish.is_exhausted() and fish.size_class != FishState.SIZE_SMALL:
 		t_drift = 0.0
 		t_sub *= 0.35
 		t_shake *= 0.35
