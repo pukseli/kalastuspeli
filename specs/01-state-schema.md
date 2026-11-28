@@ -167,8 +167,7 @@
 
 ## Suunniteltu tietoskeema (tulevat viipaleet S11+ — ks. [`specs/02-mechanics/line-physics.md`](02-mechanics/line-physics.md) ja [`specs/02-mechanics/planer-boards.md`](02-mechanics/planer-boards.md))
 
-> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState` (sis. jännityksen, jarrun, puolan, kunnon ja luiston `S11a`), `GameState.rods`, `FishState`, `GameState.fishes`, `PlayerInput.interact_held`, `PlayerInput.drag_input` (`S11a`), `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` (`10c`) on toteutettu viipaleissa `S8–S11a`. Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
-> - **`S11b` (`11b-line-visuals-and-rod-bend`):** Puhdas näkymäviipale (`src/view/`, ei tietoskeemadeltaa): 3D-siimakäyrä, vertex-värit/värinä, vavan taipuma ja visuaalinen kireys-/jarrumittari.
+> **Huomio Elävän skeeman säännöstä:** `PlanerBoard`, `RodState` (sis. jännityksen, jarrun, puolan, kunnon ja luiston `S11a`), `GameState.rods`, `FishState`, `GameState.fishes`, `PlayerInput.interact_held`, `PlayerInput.drag_input` (`S11a`), `HeldItem.deck_position`, `FishState.scoop_progress` ja `GameState.catches` (`10c`) on toteutettu viipaleissa `S8–S11b` (`S11b` oli puhdas näkymäviipale ilman tietoskeemadeltaa). Tulevat pelimekaniikkalaajennukset lisätään toteutettuihin vasta kohdeviipaleissaan:
 > - **`S11c` (`11c-fish-fatigue`):** Kalan syvempi väsytysmalli (`stamina`-silmukka).
 > - **`S12` (`12-trolling-window-and-tangles`):** Uisteluikkunakalibrointi ja `TANGLED`-solmun selvitys kannella.
 > - **`S16` (`16-lake-obstacles`):** `WorldFeatures`-saaret ja -karikot (`SNAGGED`), jotka syöttävät esteet `RodSimulator.step(..., obstacles)`-rajapintaan, sekä äkillinen shokkikuormakatkeaminen kovassa vauhdissa/jarrulla.
